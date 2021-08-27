@@ -1,0 +1,11 @@
+domain: polyglot.systems
+layout:
+- go.kubebuilder.io/v3
+multigroup: true
+plugins:
+  manifests.sdk.operatorframework.io/v2: {}
+  scorecard.sdk.operatorframework.io/v2: {}
+  sdk.x-openshift.io/v1: {}
+projectName: certificate-sentinel-operator
+repo: github.com/kenmoini/certificate-sentinel-operator
+version: "3"
