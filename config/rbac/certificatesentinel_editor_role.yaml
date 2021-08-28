@@ -1,0 +1,24 @@
+# permissions for end users to edit certificatesentinels.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: certificatesentinel-editor-role
+rules:
+- apiGroups:
+  - config.polyglot.systems
+  resources:
+  - certificatesentinels
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - config.polyglot.systems
+  resources:
+  - certificatesentinels/status
+  verbs:
+  - get

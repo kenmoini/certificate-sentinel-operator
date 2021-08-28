@@ -8,4 +8,23 @@ plugins:
   sdk.x-openshift.io/v1: {}
 projectName: certificate-sentinel-operator
 repo: github.com/kenmoini/certificate-sentinel-operator
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: polyglot.systems
+  group: config
+  kind: CertificateSentinel
+  path: github.com/kenmoini/certificate-sentinel-operator/apis/config/v1
+  version: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: polyglot.systems
+  group: config
+  kind: KeystoreSentinel
+  path: github.com/kenmoini/certificate-sentinel-operator/apis/config/v1
+  version: v1
 version: "3"

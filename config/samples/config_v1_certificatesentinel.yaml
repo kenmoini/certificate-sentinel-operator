@@ -1,0 +1,7 @@
+apiVersion: config.polyglot.systems/v1
+kind: CertificateSentinel
+metadata:
+  name: certificatesentinel-sample
+spec:
+  # Add fields here
+  foo: bar

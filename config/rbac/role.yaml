@@ -1,0 +1,74 @@
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+- apiGroups:
+  - config.polyglot.systems
+  resources:
+  - certificatesentinels
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - config.polyglot.systems
+  resources:
+  - certificatesentinels/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - config.polyglot.systems
+  resources:
+  - certificatesentinels/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - config.polyglot.systems
+  resources:
+  - keystoresentinels
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - config.polyglot.systems
+  resources:
+  - keystoresentinels/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - config.polyglot.systems
+  resources:
+  - keystoresentinels/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
