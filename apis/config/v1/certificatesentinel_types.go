@@ -27,6 +27,9 @@ type CertificateSentinelSpec struct {
 
 	// Alerts is where the alerts will be sent to
 	Alerts []Alert `json:"alerts"`
+
+	// ScanningInterval is how frequently the controller scans the cluster for these targets - defaults to 30s
+	ScanningInterval int `json:"scanningInterval,omitempty"`
 }
 
 // Targets provide what sort of objects we're watching for, be that a ConfigMap or a Secret
@@ -43,8 +46,6 @@ type Targets struct {
 	Labels []string `json:"labels,omitempty"`
 	// ServiceAccount is the ServiceAccount to use in order to scan the cluster - this allows for separate RBAC per targeted object
 	ServiceAccount string `json:"serviceAccount"`
-	// ScanningInterval is how frequently the controller scans the cluster for these targets - defaults to 30s
-	ScanningInterval int32 `json:"scanningInterval,omitempty"`
 }
 
 // Alert provides the structure of the type of Alert

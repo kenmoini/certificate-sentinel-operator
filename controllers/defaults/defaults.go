@@ -1,46 +1,67 @@
 // Package defaults contains the default values for various configurable options
 package defaults
 
-const (
-	// NodeAffinityKey is the node label to determine which nodes belong
-	// to a storage cluster
-	NodeAffinityKey = "cluster.ocs.openshift.io/openshift-storage"
-	// NodeTolerationKey is the taint all OCS Pods should tolerate
-	NodeTolerationKey = "node.ocs.openshift.io/storage"
-	// RackTopologyKey is the node label used to distribute storage nodes
-	// when there are not enough AZs presnet across the nodes
-	RackTopologyKey = "topology.rook.io/rack"
-	// KubeMajorTopologySpreadConstraints is the minimum major kube version to support TSC
-	// used along with KubeMinorTSC for version comparison
-	KubeMajorTopologySpreadConstraints = "1"
-	// KubeMinorTopologySpreadConstraints is the minimum minor kube version to support TSC
-	// used along with KubeMajorTSC for version comparison
-	KubeMinorTopologySpreadConstraints = "19"
+import (
+	"strconv"
+	"strings"
 )
 
+const ()
+
 var (
-	// DefaultMonCount is the number of monitors to be configured for the CephCluster
-	DefaultMonCount = 3
-	// ArbiterModeMonCount is the number of monitors to be configured for the CephCluster in arbiter mode
-	ArbiterModeMonCount = 5
-	// DeviceSetReplica is the default number of Rook-Ceph
-	// StorageClassDeviceSets per StorageCluster StorageDeviceSet
-	// This is equal to the default number of failure domains for OSDs
-	DeviceSetReplica = 3
-	// CephObjectStoreGatewayInstances is the default number of RGW instances to create
-	CephObjectStoreGatewayInstances = 1
-	// ArbiterCephObjectStoreGatewayInstances is the default number of RGW instances to create when arbiter is enabled
-	ArbiterCephObjectStoreGatewayInstances = 2
-	// IsUnsupportedCephVersionAllowed is a string that determines if the CephCluster should allow unsupported ceph version image
-	IsUnsupportedCephVersionAllowed = ""
-	// ArbiterModeDeviceSetReplica is the default number of Rook-Ceph
-	// StorageClassDeviceSets per StorageCluster StorageDeviceSet when arbiter is enabled
-	// This is equal to the default number of failure domains for OSDs when arbiter is enabled
-	ArbiterModeDeviceSetReplica = 2
-	// ReplicasPerFailureDomain is the default replica count in the failure domain
-	// This maps to the ReplicasPerFailureDomain in the CephReplicatedSpec when creating the CephBlockPools
-	ReplicasPerFailureDomain = 1
-	// ArbiterReplicasPerFailureDomain is the default replica count in the failure domain when arbiter is enabled
-	// This maps to the ReplicasPerFailureDomain in the CephReplicatedSpec when creating the CephBlockPools
-	ArbiterReplicasPerFailureDomain = 2
+	// ScanningInterval is the number of seconds to wait before the controller starts again
+	ScanningInterval = 30
 )
+
+// setDefaultInt32 will return either the default int32 or an overriden value
+func SetDefaultInt32(defaultVal int32, overrideVal int32) int32 {
+	iString := strings.TrimSpace(i32ToString(overrideVal))
+	if overrideVal == 0 {
+		return defaultVal
+	}
+	if len(iString) > 0 {
+		return overrideVal
+	}
+	return defaultVal
+}
+
+// setDefaultInt will return either the default int or an overriden value
+func SetDefaultInt(defaultVal int, overrideVal int) int {
+	if overrideVal == 0 {
+		return defaultVal
+	}
+	if len(strings.TrimSpace(strconv.Itoa(overrideVal))) > 0 {
+		return overrideVal
+	}
+	return defaultVal
+}
+
+// setDefaultString will return either the default string or an overriden value
+func SetDefaultString(defaultVal string, overrideVal string) string {
+	if len(strings.TrimSpace(overrideVal)) > 0 {
+		return overrideVal
+	}
+	return defaultVal
+}
+
+// i32ToString will convert an int32 to a string for length comparison
+func i32ToString(n int32) string {
+	buf := [11]byte{}
+	pos := len(buf)
+	i := int64(n)
+	signed := i < 0
+	if signed {
+		i = -i
+	}
+	for {
+		pos--
+		buf[pos], i = '0'+byte(i%10), i/10
+		if i == 0 {
+			if signed {
+				pos--
+				buf[pos] = '-'
+			}
+			return string(buf[pos:])
+		}
+	}
+}
