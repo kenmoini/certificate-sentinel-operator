@@ -31,24 +31,28 @@ type CertificateSentinelSpec struct {
 
 // Targets provide what sort of objects we're watching for, be that a ConfigMap or a Secret
 type Targets struct {
+	// TargetName is a simple DNS/k8s compliant name for identification purposes
+	TargetName string `json:"name"`
 	// Namespaces is the slice of namespaces to watch on the cluster - can be a single wildcard to watch all namespaces
 	Namespaces []string `json:"namespaces"`
 	// Kind can be either ConfigMap or Secret
-	Kind           string   `json:"kind"`
+	Kind string `json:"kind"`
 	// APIVersion corresponds to the target kind apiVersion, so v1 is all really
-	APIVersion     string   `json:"apiVersion"`
+	APIVersion string `json:"apiVersion"`
 	// Labels is an optional slice of key pair labels to target, which will limit the scope of the matched objects to only ones with those labels
-	Labels         []string `json:"labels,omitempty"`
+	Labels []string `json:"labels,omitempty"`
 	// ServiceAccount is the ServiceAccount to use in order to scan the cluster - this allows for separate RBAC per targeted object
-	ServiceAccount string   `json:"serviceAccount"`
+	ServiceAccount string `json:"serviceAccount"`
+	// ScanningInterval is how frequently the controller scans the cluster for these targets - defaults to 30s
+	ScanningInterval int32 `json:"scanningInterval,omitempty"`
 }
 
 // Alert provides the structure of the type of Alert
 type Alert struct {
 	// AlertType - valid values are: 'email' and 'logger'
-	AlertType          string             `json:"type"`
+	AlertType string `json:"type"`
 	// AlertName is a simple DNS/k8s compliant name for identification purposes
-	AlertName          string             `json:"name"`
+	AlertName string `json:"name"`
 	// AlertConfiguration is optional when only using `logger` as the AlertType, but with SMTP it must be defined
 	AlertConfiguration AlertConfiguration `json:"config,omitempty"`
 }
@@ -85,19 +89,21 @@ type CertificateSentinelStatus struct {
 	// DiscoveredCertificates is the slice of CertificateInformation that list the total set of discovered certificates
 	DiscoveredCertificates []CertificateInformation `json:"discoveredCertificates"`
 	// CertificatesAtRisk is the slice of CertificateInformation that list the discovered certificates that are about to expire
-	CertificatesAtRisk     []CertificateInformation     `json:"certificatesAtRisk"`
+	CertificatesAtRisk []CertificateInformation `json:"certificatesAtRisk"`
 }
 
 // CertificateInformation provides the status structure of what certificates have been discovered on the cluster
 type CertificateInformation struct {
 	// Namespace provides what namespace the certificate object was found in
-	Namespace                      string `json:"namespace"`
+	Namespace string `json:"namespace"`
 	// Name provides the name of the certificate object
-	Name                           string `json:"name"`
+	Name string `json:"name"`
 	// Kind provides the kind of the certificate object
-	Kind                           string `json:"kind"`
+	Kind string `json:"kind"`
+	// APIVersion corresponds to the target kind apiVersion, so v1 is all really
+	APIVersion string `json:"apiVersion"`
 	// Expiration is the expiration date in YYYY-MM-DD
-	Expiration                     string `json:"expiration"`
+	Expiration string `json:"expiration"`
 	// CertificateAuthorityCommonName provides the Common Name of the signing Certificate Authority
 	CertificateAuthorityCommonName string `json:"certificateAuthorityCommonName"`
 }

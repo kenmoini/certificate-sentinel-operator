@@ -55,10 +55,10 @@ type DiscoveredKeystores struct {
 
 // KeystoresAtRisk provides the status structure of what keystores have certificates that are about to expire and from what CA
 type KeystoresAtRisk struct {
-	Namespace                      string `json:"namespace"`
-	Name                           string `json:"name"`
-	Kind                           string `json:"kind"`
-	Expiration                     string `json:"expiration"`
+	Namespace  string `json:"namespace"`
+	Name       string `json:"name"`
+	Kind       string `json:"kind"`
+	Expiration string `json:"expiration"`
 }
 
 //+kubebuilder:object:root=true

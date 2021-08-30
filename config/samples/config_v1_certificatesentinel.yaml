@@ -3,5 +3,13 @@ kind: CertificateSentinel
 metadata:
   name: certificatesentinel-sample
 spec:
-  # Add fields here
-  foo: bar
+  targets:
+    - name: all-secrets
+      namespaces:
+      - "*"
+      kind: Secret
+      apiVersion: v1
+      serviceAccount: someSA
+  alerts:
+    - name: secrets-logger
+      type: logger
