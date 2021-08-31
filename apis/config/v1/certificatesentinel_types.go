@@ -46,6 +46,8 @@ type Targets struct {
 	Labels []string `json:"labels,omitempty"`
 	// ServiceAccount is the ServiceAccount to use in order to scan the cluster - this allows for separate RBAC per targeted object
 	ServiceAccount string `json:"serviceAccount"`
+	// DaysOut is the slice of days out alerts should be triggered at.  Defaults to 30, 60, and 90
+	DaysOut []int `json:"daysOut,omitempty"`
 }
 
 // Alert provides the structure of the type of Alert
@@ -60,8 +62,6 @@ type Alert struct {
 
 // AlertConfiguration provides the structure of the AlertConfigurations for different Alert Endpoints
 type AlertConfiguration struct {
-	// DaysOut is the slice of days out alerts should be triggered at.  Defaults to 30, 60, and 90
-	DaysOut []int32 `json:"daysOut,omitempty"`
 	// ReportInterval is the frequency in which Reports would be sent out - can be `daily`, `weekly`, or `monthly`.  Defaults to daily.
 	ReportInterval string `json:"reportInterval,omitempty"`
 	// SMTPDestinationEmailAddress is where the alert messages will be sent TO
@@ -103,10 +103,14 @@ type CertificateInformation struct {
 	Kind string `json:"kind"`
 	// APIVersion corresponds to the target kind apiVersion, so v1 is all really
 	APIVersion string `json:"apiVersion"`
+	// DataKey is the key for the data structure found
+	DataKey string `json:"dataKey"`
 	// Expiration is the expiration date in YYYY-MM-DD
 	Expiration string `json:"expiration"`
 	// CertificateAuthorityCommonName provides the Common Name of the signing Certificate Authority
 	CertificateAuthorityCommonName string `json:"certificateAuthorityCommonName"`
+	// IsCertificateAuthority returns a bool if the certificate is a CA
+	IsCertificateAuthority bool `json:"isCertificateAuthority"`
 }
 
 //+kubebuilder:object:root=true

@@ -46,13 +46,6 @@ spec:
                       description: AlertConfiguration is optional when only using
                         `logger` as the AlertType, but with SMTP it must be defined
                       properties:
-                        daysOut:
-                          description: DaysOut is the slice of days out alerts should
-                            be triggered at.  Defaults to 30, 60, and 90
-                          items:
-                            format: int32
-                            type: integer
-                          type: array
                         reportInterval:
                           description: ReportInterval is the frequency in which Reports
                             would be sent out - can be `daily`, `weekly`, or `monthly`.  Defaults
@@ -114,6 +107,12 @@ spec:
                       description: APIVersion corresponds to the target kind apiVersion,
                         so v1 is all really
                       type: string
+                    daysOut:
+                      description: DaysOut is the slice of days out alerts should
+                        be triggered at.  Defaults to 30, 60, and 90
+                      items:
+                        type: integer
+                      type: array
                     kind:
                       description: Kind can be either ConfigMap or Secret
                       type: string
@@ -169,9 +168,16 @@ spec:
                       description: CertificateAuthorityCommonName provides the Common
                         Name of the signing Certificate Authority
                       type: string
+                    dataKey:
+                      description: DataKey is the key for the data structure found
+                      type: string
                     expiration:
                       description: Expiration is the expiration date in YYYY-MM-DD
                       type: string
+                    isCertificateAuthority:
+                      description: IsCertificateAuthority returns a bool if the certificate
+                        is a CA
+                      type: boolean
                     kind:
                       description: Kind provides the kind of the certificate object
                       type: string
@@ -185,7 +191,9 @@ spec:
                   required:
                   - apiVersion
                   - certificateAuthorityCommonName
+                  - dataKey
                   - expiration
+                  - isCertificateAuthority
                   - kind
                   - name
                   - namespace
@@ -206,9 +214,16 @@ spec:
                       description: CertificateAuthorityCommonName provides the Common
                         Name of the signing Certificate Authority
                       type: string
+                    dataKey:
+                      description: DataKey is the key for the data structure found
+                      type: string
                     expiration:
                       description: Expiration is the expiration date in YYYY-MM-DD
                       type: string
+                    isCertificateAuthority:
+                      description: IsCertificateAuthority returns a bool if the certificate
+                        is a CA
+                      type: boolean
                     kind:
                       description: Kind provides the kind of the certificate object
                       type: string
@@ -222,7 +237,9 @@ spec:
                   required:
                   - apiVersion
                   - certificateAuthorityCommonName
+                  - dataKey
                   - expiration
+                  - isCertificateAuthority
                   - kind
                   - name
                   - namespace

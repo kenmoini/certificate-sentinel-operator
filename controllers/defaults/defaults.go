@@ -11,6 +11,8 @@ const ()
 var (
 	// ScanningInterval is the number of seconds to wait before the controller starts again
 	ScanningInterval = 30
+	// DaysOut is the default number of days out to gate certificate expiration at
+	DaysOut = []int{30, 60, 90, 9000, 9001}
 )
 
 // setDefaultInt32 will return either the default int32 or an overriden value
