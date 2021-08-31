@@ -26,7 +26,7 @@ make generate && make manifests && make install run
 
 *THIS!  IS!  KUBERNETES!*
 
-So ya know, make a Namespace to get started...
+So, ya know, make a Namespace to get started...
 
 ```yaml
 ---
@@ -50,6 +50,8 @@ metadata:
 
 ### 3. Create ClusterRoleBindings
 
+##### namespace-reader
+
 ```yaml
 ---
 kind: ClusterRole
@@ -67,6 +69,8 @@ rules:
       - namespaces
 ```
 
+##### secret-reader
+
 ```yaml
 ---
 kind: ClusterRole
@@ -82,6 +86,8 @@ metadata:
     resources:
       - secrets
 ```
+
+##### configmap-reader
 
 ```yaml
 ---
@@ -107,6 +113,8 @@ Your ServiceAccount needs to be able to query a Namespace List and the Secrets/C
 
 For other namespaces you would need to duplicate and variate the `.metadata.namespace`
 
+##### Allow the serviceaccount/some-service-account to access Namespaces
+
 ```yaml
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -124,6 +132,8 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
+##### Allow the serviceaccount/some-service-account to access Secrets in namespace/cert-sentinel
+
 ```yaml
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -140,6 +150,8 @@ roleRef:
   name: secret-reader
   apiGroup: rbac.authorization.k8s.io
 ```
+
+##### Allow the serviceaccount/some-service-account to access Secrets in namespace/openshift-kube-scheduler-operator
 
 ```yaml
 ---
@@ -296,65 +308,80 @@ metadata:
   name: certificatesentinel-sample
   namespace: cert-operator
 spec:
+  # alerts is a list of alerting endpoints associated with these below targets
   alerts:
-    - name: secrets-logger
-      type: logger
-      config: # optional on logger types, required for SMTP
-        reportInterval: daily
+    # Log report to Stdout once a day, useful for Elastic/Splunk/etc environments
+    - name: secrets-logger # must be a unique dns/k8s compliant name
+      type: logger # type can be: `logger` or `smtp`
+      config: # optional on `logger` types, required for `smtp`
+        reportInterval: daily # reportInterval can be `daily`, `weekly`, or `monthly`
+
+    # Log report monthly to an email address via SMTP
+    - name: secrets-mailer
+      type: smtp
+      config:
+        reportInterval: daily # reportInterval can be `daily`, `weekly`, or `monthly`
+        smtp_destination_address: "infosec@example.com" # where is the emailed report being sent to
+        smtp_sender_address: "ocp-certificate-sentinel+cluster-name@example.com" # what address is it being sent from
+        smtp_sender_hostname: "cluster-name.example.com" # client hostname of the sender
+        smtp_endpoint: "smtp.example.com:25" # SMTP endpoint, hostname:port format
+        smtp_auth_secret: my-smtp-secret-name # name of the Secret containing the SMTP log in credentials
+        smtp_auth_type: plain # SMTP authentication type, can be `plain`, `login`, or `cram-md5`
+        smtp_use_tls: false # Enable or disable SMTP TLS
+  # targets is a list of Kubernetes objects being targeted and scanned for x509 Certificate data
   targets:
-    - apiVersion: v1
-      daysOut:
+    # Target Secrets/v1, looking for certificates with expirations coming in 30, 60, 90, 9000, and 9001 days across all namespaces with a specific serviceaccount
+    - apiVersion: v1 # Corresponds to the apiVersion of the object being targeted - likely just v1 for Secrets & ConfigMaps
+      daysOut: # Expiration thresholds for 30, 60, 90, 9000, and 9001 days out - 9000/9001 are for testing
         - 30
         - 60
         - 90
         - 9001
         - 9000
-      kind: Secret
-      name: all-secrets
-      namespaces:
+      kind: Secret # Corresponds to the kind of the object being targeted - Secret or ConfigMap
+      name: all-secrets # must be a unique dns/k8s compliant name
+      namespaces: # list of namespaces to watch for certificates in Secrets - can be a single wildcard or a list of specific namespaces
         - '*'
-      serviceAccount: some-service-account
+      serviceAccount: some-service-account # the ServiceAccount in tis namespace to use against the K8s/OCP API
+# .status will be updated at the end of a full scan/operator reconciliation and will list any certificates found, the ones expiring within our designated daysOut thresholds, and when the last reports were sent for each alert
 status:
   certificatesAtRisk:
-      # triggeredDaysOut []int
     - triggeredDaysOut:
         - 9001
         - 9000
-      # certificateAuthorityCommonName string
       certificateAuthorityCommonName: openshift-service-serving-signer@1630120637
-      # name string
       name: kube-scheduler-operator-serving-cert
-      # expiration string
       expiration: '2023-08-28 03:17:39 +0000 UTC'
-      # kind string
       kind: Secret
-      # dataKey string
       dataKey: tls.crt
-      # isCertificateAuthority bool
       isCertificateAuthority: false
-      # namespace string
       namespace: openshift-kube-scheduler-operator
-      # apiVersion string
       apiVersion: v1
   discoveredCertificates:
-      # triggeredDaysOut []int
     - triggeredDaysOut:
         - 9001
         - 9000
-      # certificateAuthorityCommonName string
       certificateAuthorityCommonName: openshift-service-serving-signer@1630120637
-      # name string
       name: kube-scheduler-operator-serving-cert
-      # expiration string
       expiration: '2023-08-28 03:17:39 +0000 UTC'
-      # kind string
       kind: Secret
-      # dataKey string
       dataKey: tls.crt
-      # isCertificateAuthority bool
       isCertificateAuthority: false
-      # namespace string
       namespace: openshift-kube-scheduler-operator
-      # apiVersion string
       apiVersion: v1
+```
+
+### SMTP Configuration
+
+In order to have a CertificateSentinel communicate with an SMTP server, it must be provided some log in parameters - these are stored as a Secret and the name of that Secret is passed to the `.spec.alerts[*].config.smtp_auth_secret` definition.
+
+```bash
+## Plain or Login SMTP Authentication Types
+export SMTP_USERNAME="someUser"
+export SMTP_PASSWORD="securePassword"
+
+oc create secret generic my-smtp-secret-name --from-literal=username=${SMTP_USERNAME} --from-literal=password=${SMTP_PASSWORD}
+
+## CRAM-MD5 SMTP Authentication Types
+# ??? IDK, i don't cram mail lol
 ```

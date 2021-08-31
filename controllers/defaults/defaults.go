@@ -15,6 +15,8 @@ var (
 	DaysOut = []int{30, 60, 90}
 	// ReportInterval is how frequently a report should be submitted for triggered targeted alerts
 	ReportInterval = "daily"
+	// SMTPAuthUseTLS is a boolean for if the Golang SMTP Client will use TLS against the server
+	SMTPAuthUseTLS = true
 )
 
 // setDefaultInt32 will return either the default int32 or an overriden value

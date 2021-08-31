@@ -76,7 +76,7 @@ type AlertConfiguration struct {
 	SMTPAuthSecretName string `json:"smtp_auth_secret,omitempty"`
 	// SMTPAuthType can be either `plain`, `login`, or `cram-md5`
 	SMTPAuthType string `json:"smtp_auth_type,omitempty"`
-	// SMTPAuthUseTLS can be used to set the use of TLS
+	// SMTPAuthUseTLS can be used to set the use of TLS, default is true
 	SMTPAuthUseTLS bool `json:"smtp_use_tls,omitempty"`
 	// Moved to K8s Secret
 	// SMTPAuthUsername string `json:"smtp_auth_username,omitempty"`
