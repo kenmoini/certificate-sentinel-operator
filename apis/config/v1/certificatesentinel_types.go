@@ -91,6 +91,14 @@ type CertificateSentinelStatus struct {
 	DiscoveredCertificates []CertificateInformation `json:"discoveredCertificates"`
 	// CertificatesAtRisk is the slice of CertificateInformation that list the discovered certificates that are about to expire
 	CertificatesAtRisk []CertificateInformation `json:"certificatesAtRisk"`
+	// ReportsSent is the collection of target alert reports that have been sent out by this Operator and when
+	LastReportsSent []LastReportSent `json:"lastReportsSent,omitempty"`
+}
+
+// ReportSent composes the information around when reports were last sent for which Alert
+type LastReportSent struct {
+	AlertName string `json:"alertName"`
+	LastSent  string `json:"lastSent"`
 }
 
 // CertificateInformation provides the status structure of what certificates have been discovered on the cluster
@@ -111,6 +119,8 @@ type CertificateInformation struct {
 	CertificateAuthorityCommonName string `json:"certificateAuthorityCommonName"`
 	// IsCertificateAuthority returns a bool if the certificate is a CA
 	IsCertificateAuthority bool `json:"isCertificateAuthority"`
+	// TriggeredDaysOut provides the slice of days out that triggered the watch
+	TriggeredDaysOut []int `json:"triggeredDaysOut,omitempty"`
 }
 
 //+kubebuilder:object:root=true

@@ -188,6 +188,12 @@ spec:
                       description: Namespace provides what namespace the certificate
                         object was found in
                       type: string
+                    triggeredDaysOut:
+                      description: TriggeredDaysOut provides the slice of days out
+                        that triggered the watch
+                      items:
+                        type: integer
+                      type: array
                   required:
                   - apiVersion
                   - certificateAuthorityCommonName
@@ -234,6 +240,12 @@ spec:
                       description: Namespace provides what namespace the certificate
                         object was found in
                       type: string
+                    triggeredDaysOut:
+                      description: TriggeredDaysOut provides the slice of days out
+                        that triggered the watch
+                      items:
+                        type: integer
+                      type: array
                   required:
                   - apiVersion
                   - certificateAuthorityCommonName
@@ -243,6 +255,22 @@ spec:
                   - kind
                   - name
                   - namespace
+                  type: object
+                type: array
+              lastReportsSent:
+                description: ReportsSent is the collection of target alert reports
+                  that have been sent out by this Operator and when
+                items:
+                  description: ReportSent composes the information around when reports
+                    were last sent for which Alert
+                  properties:
+                    alertName:
+                      type: string
+                    lastSent:
+                      type: string
+                  required:
+                  - alertName
+                  - lastSent
                   type: object
                 type: array
             required:
