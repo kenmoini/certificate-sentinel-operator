@@ -312,6 +312,8 @@ metadata:
   name: certificatesentinel-sample
   namespace: cert-operator
 spec:
+  #  [optional] scanningInterval is the number of seconds the Operator will scan the cluster - default is 60
+  scanningInterval: 60
   # alerts is a list of alerting endpoints associated with these below targets
   alerts:
     # Log report to Stdout once a day, useful for Elastic/Splunk/etc environments
@@ -324,19 +326,19 @@ spec:
     - name: secrets-mailer
       type: smtp
       config:
-        reportInterval: daily # reportInterval can be `daily`, `weekly`, or `monthly`
+        reportInterval: daily # [optional] reportInterval can be `daily`, `weekly`, or `monthly`, defaults to `daily`
         smtp_destination_address: "infosec@example.com" # where is the emailed report being sent to
         smtp_sender_address: "ocp-certificate-sentinel+cluster-name@example.com" # what address is it being sent from
         smtp_sender_hostname: "cluster-name.example.com" # client hostname of the sender
         smtp_endpoint: "smtp.example.com:25" # SMTP endpoint, hostname:port format
         smtp_auth_secret: my-smtp-secret-name # name of the Secret containing the SMTP log in credentials
         smtp_auth_type: plain # SMTP authentication type, can be `plain`, `login`, or `cram-md5`
-        smtp_use_tls: false # Enable or disable SMTP TLS
+        smtp_use_tls: false # [optional] Enable or disable SMTP TLS - defaults to `true`
   # targets is a list of Kubernetes objects being targeted and scanned for x509 Certificate data
   targets:
     # Target Secrets/v1, looking for certificates with expirations coming in 30, 60, 90, 9000, and 9001 days across all namespaces with a specific serviceaccount
     - apiVersion: v1 # Corresponds to the apiVersion of the object being targeted - likely just v1 for Secrets & ConfigMaps
-      daysOut: # Expiration thresholds for 30, 60, 90, 9000, and 9001 days out - 9000/9001 are for testing
+      daysOut: # [optional] Expiration thresholds for 30, 60, 90, 9000, and 9001 days out - 9000/9001 are for testing.  Defaults to 30, 60, and 90
         - 30
         - 60
         - 90

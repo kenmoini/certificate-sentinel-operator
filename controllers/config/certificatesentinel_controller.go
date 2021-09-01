@@ -407,7 +407,7 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 	certificateSentinel.Status.CertificatesAtRisk = statusLists.CertificatesAtRisk
 
 	// Process reports if needed
-	certificateSentinel.Status.LastReportsSent = processReports(*certificateSentinel, lggr)
+	certificateSentinel.Status.LastReportsSent = processReports(*certificateSentinel, lggr, r.Client)
 
 	err = r.Status().Update(ctx, certificateSentinel)
 	if err != nil {

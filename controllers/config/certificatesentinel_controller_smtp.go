@@ -137,7 +137,8 @@ func sendSMTPMessage(auth smtp.Auth, to string, from string, server string, text
 	}
 
 	// Populate Data Object
-	_, err = w.Write([]byte(message))
+	//_, err = w.Write([]byte(message))
+	_, err = w.Write(message)
 	if err != nil {
 		log.Panic(err)
 	}

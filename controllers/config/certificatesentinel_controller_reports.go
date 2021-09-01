@@ -22,6 +22,9 @@ import (
 	"github.com/go-logr/logr"
 	configv1 "github.com/kenmoini/certificate-sentinel-operator/apis/config/v1"
 	defaults "github.com/kenmoini/certificate-sentinel-operator/controllers/defaults"
+	corev1 "k8s.io/api/core/v1"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"strconv"
 	"strings"
@@ -30,7 +33,7 @@ import (
 )
 
 // processReports processes reports for the alerts
-func processReports(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger) []configv1.LastReportSent {
+func processReports(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger, clnt client.Client) []configv1.LastReportSent {
 	// Set up variables
 	var totalAlerts []string
 	var alreadySentAlerts []string
@@ -44,7 +47,7 @@ func processReports(certificateSentinel configv1.CertificateSentinel, lggr logr.
 	// Debug logging lol
 	//loggerReport := createLoggerReport(certificateSentinel, lggr)
 	//lggr.Info(loggerReport)
-	smtpReport := createSMTPReport(certificateSentinel, lggr)
+	smtpReport := createSMTPReport(certificateSentinel, lggr, clnt)
 	lggr.Info(smtpReport)
 
 	// Check the length of the ReportsSent slice
@@ -95,7 +98,7 @@ func processReports(certificateSentinel configv1.CertificateSentinel, lggr logr.
 
 				switch alert.AlertType {
 				case "smtp":
-					createSMTPReport(certificateSentinel, lggr)
+					createSMTPReport(certificateSentinel, lggr, clnt)
 				case "logger":
 				default:
 					lggr.Info("alert.AlertType: logger")
@@ -179,8 +182,8 @@ func createLoggerReport(certificateSentinel configv1.CertificateSentinel, lggr l
 }
 
 // createSMTPReport loops through CertificateSentinel.Status and sends an email report
-func createSMTPReport(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger) string {
-	lggr.Info("starting createLoggerReport")
+func createSMTPReport(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger, clnt client.Client) string {
+	lggr.Info("starting createSMTPReport")
 	currentConfig, _ := config.GetConfig()
 	clusterEndpoint := currentConfig.Host
 	apiPath := currentConfig.APIPath
@@ -239,17 +242,44 @@ func createSMTPReport(certificateSentinel configv1.CertificateSentinel, lggr log
 	// Loop through the alerts
 	for _, alert := range certificateSentinel.Spec.Alerts {
 		if alert.AlertType == "smtp" {
+			// Set up basic SMTP vars
+			var username string
+			var password string
+			var identity string
+			var cramSecret string
+			smtpAuthSecret := &corev1.Secret{}
+
 			// Get SMTP Authentication Secret if the AuthType is not `none`
 			if alert.AlertConfiguration.SMTPAuthType != "none" {
-				smtpAuthSecret := configv1.GetSecret(alert.AlertConfiguration.SMTPAuthSecretName, certificateSentinel.Namespace)
+				smtpAuthSecret, _ = GetSecret(alert.AlertConfiguration.SMTPAuthSecretName, certificateSentinel.Namespace, clnt)
 			}
+
+			// Assign SMTP Auth vars where needed
+			if len(smtpAuthSecret.Data) > 0 {
+				username = string(smtpAuthSecret.Data["username"])
+				password = string(smtpAuthSecret.Data["password"])
+				identity = string(smtpAuthSecret.Data["identity"])
+				cramSecret = string(smtpAuthSecret.Data["cram"])
+			}
+
+			// Set up SMTP Auth object
 			smtpAuth := setupSMTPAuth(alert.AlertConfiguration.SMTPAuthType,
-				alert.AlertConfiguration.SMTPAuthType,
-				alert.AlertConfiguration.SMTPAuthType,
-				alert.AlertConfiguration.SMTPAuthType,
-				alert.AlertConfiguration.SMTPAuthType,
+				username,
+				password,
+				identity,
+				cramSecret,
+				alert.AlertConfiguration.SMTPEndpoint,
 			)
 
+			// Set up SMTP Message
+			sendSMTPMessage(smtpAuth,
+				alert.AlertConfiguration.SMTPDestinationEmailAddress,
+				alert.AlertConfiguration.SMTPSenderEmailAddress,
+				alert.AlertConfiguration.SMTPEndpoint,
+				basicTextEmailReport,
+				"",
+				alert.AlertConfiguration.SMTPAuthUseTLS,
+			)
 		}
 	}
 

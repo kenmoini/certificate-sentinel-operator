@@ -10,7 +10,7 @@ const ()
 
 var (
 	// ScanningInterval is the number of seconds to wait before the controller starts again
-	ScanningInterval = 30
+	ScanningInterval = 60
 	// DaysOut is the default number of days out to gate certificate expiration at
 	DaysOut = []int{30, 60, 90}
 	// ReportInterval is how frequently a report should be submitted for triggered targeted alerts
