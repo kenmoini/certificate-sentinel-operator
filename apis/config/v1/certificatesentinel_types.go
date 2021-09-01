@@ -74,7 +74,7 @@ type AlertConfiguration struct {
 	SMTPEndpoint string `json:"smtp_endpoint,omitempty"`
 	// SMTPAuthSecretName is the name of the K8s Secret that holds the authentication information
 	SMTPAuthSecretName string `json:"smtp_auth_secret,omitempty"`
-	// SMTPAuthType can be either `plain`, `login`, or `cram-md5`
+	// SMTPAuthType can be either `none`, `plain`, `login`, or `cram-md5`
 	SMTPAuthType string `json:"smtp_auth_type,omitempty"`
 	// SMTPAuthUseTLS can be used to set the use of TLS, default is true
 	SMTPAuthUseTLS bool `json:"smtp_use_tls,omitempty"`

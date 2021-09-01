@@ -154,8 +154,8 @@ func getServiceAccount(serviceAccount string, namespace string, clnt client.Clie
 	return targetServiceAccount, nil
 }
 
-// getSecret returns a single Secret by name in a given Namespace
-func getSecret(name string, namespace string, clnt client.Client) (*corev1.Secret, error) {
+// GetSecret returns a single Secret by name in a given Namespace
+func GetSecret(name string, namespace string, clnt client.Client) (*corev1.Secret, error) {
 	targetSecret := &corev1.Secret{}
 	err := clnt.Get(context.Background(), client.ObjectKey{
 		Namespace: namespace,
@@ -256,7 +256,7 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 
 		// Get Secret
 		lggr.Info("Using Secret: " + serviceAccountSecretName)
-		targetServiceAccountSecret, _ := getSecret(serviceAccountSecretName, certificateSentinel.Namespace, r.Client)
+		targetServiceAccountSecret, _ := GetSecret(serviceAccountSecretName, certificateSentinel.Namespace, r.Client)
 
 		// Set up new client config
 		newConfig := &rest.Config{
@@ -321,7 +321,7 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 						if secretType == string(corev1.SecretTypeOpaque) || secretType == string(corev1.SecretTypeTLS) {
 							lggr.Info("Getting secret/" + e.Name + " in namespace/" + el + " (type=" + secretType + ")")
 
-							secretItem, _ := getSecret(string(e.Name), el, cl)
+							secretItem, _ := GetSecret(string(e.Name), el, cl)
 
 							// Get the actual secret data
 							for k, s := range secretItem.Data {

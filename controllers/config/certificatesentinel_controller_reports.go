@@ -40,9 +40,12 @@ func processReports(certificateSentinel configv1.CertificateSentinel, lggr logr.
 	for _, alert := range certificateSentinel.Spec.Alerts {
 		totalAlerts = append(totalAlerts, alert.AlertName)
 	}
-	
+
 	// Debug logging lol
-	//createLoggerReport(certificateSentinel, lggr)
+	//loggerReport := createLoggerReport(certificateSentinel, lggr)
+	//lggr.Info(loggerReport)
+	smtpReport := createSMTPReport(certificateSentinel, lggr)
+	lggr.Info(smtpReport)
 
 	// Check the length of the ReportsSent slice
 	if len(certificateSentinel.Status.LastReportsSent) > 0 {
@@ -116,7 +119,7 @@ func processReports(certificateSentinel configv1.CertificateSentinel, lggr logr.
 }
 
 // createLoggerReport loops through CertificateSentinel.Status and creates a stdout report
-func createLoggerReport(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger) {
+func createLoggerReport(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger) string {
 	lggr.Info("starting createLoggerReport")
 	currentConfig, _ := config.GetConfig()
 	clusterEndpoint := currentConfig.Host
@@ -170,14 +173,87 @@ func createLoggerReport(certificateSentinel configv1.CertificateSentinel, lggr l
 	if err != nil {
 		lggr.Error(err, "Error executing loggerReportTemplate template!")
 	}
-	lggr.Info(reportBuf.String())
+	//lggr.Info(reportBuf.String())
 
-	return
+	return reportBuf.String()
 }
 
 // createSMTPReport loops through CertificateSentinel.Status and sends an email report
-func createSMTPReport(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger) {
-	return
+func createSMTPReport(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger) string {
+	lggr.Info("starting createLoggerReport")
+	currentConfig, _ := config.GetConfig()
+	clusterEndpoint := currentConfig.Host
+	apiPath := currentConfig.APIPath
+
+	var reportLines string
+
+	// Loop through the .status.CertificatesAtRisk
+	for _, certInfo := range certificateSentinel.Status.CertificatesAtRisk {
+		// Set up Logger Lines
+		loggerReportLineStructure := LoggerReportLineStructure{
+			APIVersion:                     certInfo.APIVersion,
+			Kind:                           certInfo.Kind,
+			Namespace:                      certInfo.Namespace,
+			Name:                           certInfo.Name,
+			Key:                            certInfo.DataKey,
+			IsCA:                           strconv.FormatBool(certInfo.IsCertificateAuthority),
+			CertificateAuthorityCommonName: certInfo.CertificateAuthorityCommonName,
+			ExpirationDate:                 certInfo.Expiration,
+			TriggeredDaysOut:               strings.Trim(strings.Join(strings.Fields(fmt.Sprint(certInfo.TriggeredDaysOut)), ", "), "[]"),
+		}
+		lineBuf := new(bytes.Buffer)
+		loggerLineTemplate, err := template.New("loggerLine").Parse(LoggerReportLine)
+		if err != nil {
+			lggr.Info("Error parsing loggerLineTemplate template!")
+		}
+		err = loggerLineTemplate.Execute(lineBuf, loggerReportLineStructure)
+		if err != nil {
+			lggr.Info("Error executing loggerLineTemplate template!")
+		}
+		// Append to total reportLines
+		reportLines = (reportLines + lineBuf.String())
+	}
+
+	// Set up Logger Report
+	loggerReportStructure := LoggerReportStructure{
+		Namespace:          certificateSentinel.Namespace,
+		Name:               certificateSentinel.Name,
+		DateSent:           time.Now().UTC().String(),
+		ClusterAPIEndpoint: clusterEndpoint + apiPath,
+		TotalCerts:         strconv.Itoa(len(certificateSentinel.Status.DiscoveredCertificates)),
+		ExpiringCerts:      strconv.Itoa(len(certificateSentinel.Status.CertificatesAtRisk)),
+		ReportLines:        reportLines,
+	}
+	reportBuf := new(bytes.Buffer)
+	loggerReportTemplate, err := template.New("loggerReport").Parse(LoggerReport)
+	if err != nil {
+		lggr.Error(err, "Error parsing loggerReportTemplate template!")
+	}
+	err = loggerReportTemplate.Execute(reportBuf, loggerReportStructure)
+	if err != nil {
+		lggr.Error(err, "Error executing loggerReportTemplate template!")
+	}
+
+	basicTextEmailReport := reportBuf.String()
+
+	// Loop through the alerts
+	for _, alert := range certificateSentinel.Spec.Alerts {
+		if alert.AlertType == "smtp" {
+			// Get SMTP Authentication Secret if the AuthType is not `none`
+			if alert.AlertConfiguration.SMTPAuthType != "none" {
+				smtpAuthSecret := configv1.GetSecret(alert.AlertConfiguration.SMTPAuthSecretName, certificateSentinel.Namespace)
+			}
+			smtpAuth := setupSMTPAuth(alert.AlertConfiguration.SMTPAuthType,
+				alert.AlertConfiguration.SMTPAuthType,
+				alert.AlertConfiguration.SMTPAuthType,
+				alert.AlertConfiguration.SMTPAuthType,
+				alert.AlertConfiguration.SMTPAuthType,
+			)
+
+		}
+	}
+
+	return basicTextEmailReport
 }
 
 // differenceInStringSlices returns a []string of the unique items between two []string
