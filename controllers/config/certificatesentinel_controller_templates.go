@@ -16,25 +16,26 @@ limitations under the License.
 
 package config
 
-const LoggerReport = `-------------------------------------------------------------------------------------------------------------------------
+const LoggerReport = `{{ .Divider }}
 CertificateSentinel Report: {{ .Namespace }}/{{ .Name }} ({{ .DateSent }})
--------------------------------------------------------------------------------------------------------------------------
+{{ .Divider }}
   Cluster: {{ .ClusterAPIEndpoint }}
   Total Certificates Found: {{ .TotalCerts }}
   Expiring Certificates Found: {{ .ExpiringCerts }}
--------------------------------------------------------------------------------------------------------------------------
+{{ .Divider }}
 
--------------------------------------------------------------------------------------------------------------------------
-| apiVersion | kind | namespace | name | key | isCA | signingCertificateAuthorityCN | expirationDate | triggeredDaysOut |
--------------------------------------------------------------------------------------------------------------------------
-{{ .ReportLines }}
--------------------------------------------------------------------------------------------------------------------------
-| apiVersion | kind | namespace | name | key | isCA | signingCertificateAuthorityCN | expirationDate | triggeredDaysOut |
--------------------------------------------------------------------------------------------------------------------------
+{{ .Divider }}
+{{ .Header }}
+{{ .Divider }}
+{{ .ReportLines }}{{ .Divider }}
+{{ .Footer }}
+{{ .Divider }}
 `
 
 const LoggerReportLine = `| {{ .APIVersion }} | {{ .Kind }} | {{ .Namespace }} | {{ .Name }} | {{ .Key }} | {{ .CertificateAuthorityCommonName }} | {{ .IsCA }} | {{ .ExpirationDate }} | {{ .TriggeredDaysOut }} |
 `
+
+const LoggerReportHeader = `| {{ .APIVersion }} | {{ .Kind }} | {{ .Namespace }} | {{ .Name }} | {{ .Key }} | {{ .CertificateAuthorityCommonName }} | {{ .IsCA }} | {{ .ExpirationDate }} | {{ .TriggeredDaysOut }} |`
 
 // loggerReportStructure provides the overall structure to the loggerReport template
 type LoggerReportStructure struct {
@@ -45,6 +46,22 @@ type LoggerReportStructure struct {
 	TotalCerts         string
 	ExpiringCerts      string
 	ReportLines        string
+	Header             string
+	Footer             string
+	Divider            string
+}
+
+// LoggerReportHeaderStructure provides the structure for the LoggerReport header
+type LoggerReportHeaderStructure struct {
+	APIVersion                     string
+	Kind                           string
+	Namespace                      string
+	Name                           string
+	Key                            string
+	IsCA                           string
+	CertificateAuthorityCommonName string
+	ExpirationDate                 string
+	TriggeredDaysOut               string
 }
 
 // loggerReportLineStructure provides the struct for the loggerReportLine template
