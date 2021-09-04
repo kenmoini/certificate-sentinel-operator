@@ -1,5 +1,5 @@
 /*
-Copyright 2021 Ken Moini.
+Copyright 2021 Polyglot Systems.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

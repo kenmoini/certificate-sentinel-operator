@@ -1,5 +1,5 @@
 /*
-Copyright 2021 Ken Moini.
+Copyright 2021 Polyglot Systems.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -89,7 +89,7 @@ func processReports(certificateSentinel configv1.CertificateSentinel, lggr logr.
 
 	// Get the list of alerts that need to be sent
 	//if len(totalAlerts) != len(alreadySentAlerts) {
-	alertsToSend := differenceInStringSlices(totalAlerts, alreadySentAlerts)
+	alertsToSend := helpers.DifferenceInStringSlices(totalAlerts, alreadySentAlerts)
 
 	for _, alert := range certificateSentinel.Spec.Alerts {
 		if defaults.ContainsString(alertsToSend, alert.AlertName) {
@@ -423,33 +423,4 @@ func tableTextReportToBasicHTMLReport(table string) string {
 	}
 
 	return htmlBuf.String()
-}
-
-// differenceInStringSlices returns a []string of the unique items between two []string
-func differenceInStringSlices(slice1 []string, slice2 []string) []string {
-	var diff []string
-
-	// Loop two times, first to find slice1 strings not in slice2,
-	// second loop to find slice2 strings not in slice1
-	for i := 0; i < 2; i++ {
-		for _, s1 := range slice1 {
-			found := false
-			for _, s2 := range slice2 {
-				if s1 == s2 {
-					found = true
-					break
-				}
-			}
-			// String not found. We add it to return slice
-			if !found {
-				diff = append(diff, s1)
-			}
-		}
-		// Swap the slices, only if it was the first loop
-		if i == 0 {
-			slice1, slice2 = slice2, slice1
-		}
-	}
-
-	return diff
 }
