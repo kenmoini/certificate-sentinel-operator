@@ -327,8 +327,10 @@ spec:
       type: smtp
       config:
         reportInterval: daily # [optional] reportInterval can be `daily`, `weekly`, or `monthly`, defaults to `daily`
-        smtp_destination_address: "infosec@example.com" # where is the emailed report being sent to
-        smtp_sender_address: "ocp-certificate-sentinel+cluster-name@example.com" # what address is it being sent from
+        smtp_destination_addresses: # where is the emailed report being sent to, a list of emails
+          - "infosec@example.com"
+          - "certificates@example.com"
+        smtp_sender_addresses: "ocp-certificate-sentinel+cluster-name@example.com" # what address is it being sent from
         smtp_sender_hostname: "cluster-name.example.com" # client hostname of the sender
         smtp_endpoint: "smtp.example.com:25" # SMTP endpoint, hostname:port format
         smtp_auth_secret: my-smtp-secret-name # name of the Secret containing the SMTP log in credentials

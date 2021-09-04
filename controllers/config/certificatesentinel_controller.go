@@ -24,6 +24,7 @@ import (
 	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -47,15 +48,9 @@ import (
 //========================================================================== SPOT TYPES
 // CertificateSentinelReconciler reconciles a CertificateSentinel object
 type CertificateSentinelReconciler struct {
-	// client can be used to retrieve objects from the APIServer.
+	// client can be used to retrieve objects from the APIServer with the cached response.
 	client.Client
 	Scheme *runtime.Scheme
-}
-
-// SecretLists
-type SecretLists struct {
-	Found   corev1.SecretList
-	Expired corev1.SecretList
 }
 
 type timeSlices []timeSlice
@@ -402,6 +397,12 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 		}
 	}
 
+	// Set updater check vars
+	statusChanged := true
+	oldDiscoveredCertificates := certificateSentinel.Status.DiscoveredCertificates
+	oldCertificatesAtRisk := certificateSentinel.Status.CertificatesAtRisk
+	oldLastReportsSent := certificateSentinel.Status.LastReportsSent
+
 	// Merge the Certificates into the .status of the CertificateSentinel object
 	certificateSentinel.Status.DiscoveredCertificates = statusLists.DiscoveredCertificates
 	certificateSentinel.Status.CertificatesAtRisk = statusLists.CertificatesAtRisk
@@ -409,10 +410,17 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 	// Process reports if needed
 	certificateSentinel.Status.LastReportsSent = processReports(*certificateSentinel, lggr, r.Client)
 
-	err = r.Status().Update(ctx, certificateSentinel)
-	if err != nil {
-		lggr.Error(err, "Failed to update CertificateSentinel status")
-		return ctrl.Result{}, err
+	// Check the difference in structs
+	if reflect.DeepEqual(oldDiscoveredCertificates, certificateSentinel.Status.DiscoveredCertificates) || reflect.DeepEqual(oldCertificatesAtRisk, certificateSentinel.Status.CertificatesAtRisk) || reflect.DeepEqual(oldLastReportsSent, certificateSentinel.Status.LastReportsSent) {
+		statusChanged = false
+	}
+
+	if statusChanged {
+		err = r.Status().Update(ctx, certificateSentinel)
+		if err != nil {
+			lggr.Error(err, "Failed to update CertificateSentinel status")
+			return ctrl.Result{}, err
+		}
 	}
 
 	// Reconcile successful - don't requeue

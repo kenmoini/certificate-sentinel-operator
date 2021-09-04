@@ -64,8 +64,8 @@ type Alert struct {
 type AlertConfiguration struct {
 	// ReportInterval is the frequency in which Reports would be sent out - can be `daily`, `weekly`, or `monthly`.  Defaults to daily.
 	ReportInterval string `json:"reportInterval,omitempty"`
-	// SMTPDestinationEmailAddress is where the alert messages will be sent TO
-	SMTPDestinationEmailAddress string `json:"smtp_destination_address,omitempty"`
+	// SMTPDestinationEmailAddresses is where the alert messages will be sent TO
+	SMTPDestinationEmailAddresses []string `json:"smtp_destination_addresses,omitempty"`
 	// SMTPSenderEmailAddress is the address that will be used to send the alert messages
 	SMTPSenderEmailAddress string `json:"smtp_sender_address,omitempty"`
 	// SMTPSenderHostname is the hostname used during SMTP handshake
@@ -77,7 +77,9 @@ type AlertConfiguration struct {
 	// SMTPAuthType can be either `none`, `plain`, `login`, or `cram-md5`
 	SMTPAuthType string `json:"smtp_auth_type,omitempty"`
 	// SMTPAuthUseTLS can be used to set the use of TLS, default is true
-	SMTPAuthUseTLS bool `json:"smtp_use_tls,omitempty"`
+	SMTPAuthUseTLS *bool `json:"smtp_use_tls,omitempty"`
+	// SMTPAuthUseSTARTTLS can be used to set the use of STARTTLS, default is true
+	SMTPAuthUseSTARTTLS *bool `json:"smtp_use_starttls,omitempty"`
 	// Moved to K8s Secret
 	// SMTPAuthUsername string `json:"smtp_auth_username,omitempty"`
 	// SMTPAuthPassword string `json:"smtp_auth_password,omitempty"`

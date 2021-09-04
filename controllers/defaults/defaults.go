@@ -17,6 +17,10 @@ var (
 	ReportInterval = "daily"
 	// SMTPAuthUseTLS is a boolean for if the Golang SMTP Client will use TLS against the server
 	SMTPAuthUseTLS = true
+	// SMTPAuthUseSTARTTLS is a boolean for if the Golang SMTP Client will use STARTTLS against the server
+	SMTPAuthUseSTARTTLS = true
+	// SMTPMessageSubject is the default subject sent with emailed messages
+	SMTPMessageSubject = "Certificate Sentinel Operator - Report"
 )
 
 // setDefaultInt32 will return either the default int32 or an overriden value
@@ -45,6 +49,14 @@ func SetDefaultInt(defaultVal int, overrideVal int) int {
 // setDefaultString will return either the default string or an overriden value
 func SetDefaultString(defaultVal string, overrideVal string) string {
 	if len(strings.TrimSpace(overrideVal)) > 0 {
+		return overrideVal
+	}
+	return defaultVal
+}
+
+// SetDefaultBool will return either the default bool or an overriden value
+func SetDefaultBool(defaultVal *bool, overrideVal *bool) *bool {
+	if overrideVal != nil {
 		return overrideVal
 	}
 	return defaultVal
