@@ -1,4 +1,4 @@
-// Package defaults contains the default values for various configurable options
+// Package helpers contains the supporting functions for the operator at large that are shared
 package helpers
 
 import (
@@ -52,7 +52,6 @@ func StrPad(input string, padLength int, padString string, padType string) strin
 
 	return output
 }
-
 
 // DifferenceInStringSlices returns a []string of the unique items between two []string
 func DifferenceInStringSlices(slice1 []string, slice2 []string) []string {

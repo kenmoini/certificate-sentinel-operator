@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package config
+package helpers
 
 import (
 	"crypto/tls"
@@ -26,8 +26,8 @@ import (
 	"time"
 )
 
-// sendSMTPMail assembles everything needed to sent an email via go-simple-mail
-func sendSMTPMail(authType string, username string, password string, identity string, cramSecret string, useTLS *bool, useSTARTTLS *bool, to []string, from string, smtpServer string, textMessage string, htmlMessage string) {
+// SendSMTPMail assembles everything needed to sent an email via go-simple-mail
+func SendSMTPMail(authType string, username string, password string, identity string, cramSecret string, useTLS *bool, useSTARTTLS *bool, to []string, from string, smtpServer string, textMessage string, htmlMessage string) {
 
 	// Create a new SMTP Client
 	server := mail.NewSMTPClient()

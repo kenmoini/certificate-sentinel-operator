@@ -21,16 +21,13 @@ import (
 	"fmt"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
-
-	"crypto/x509"
-	"encoding/pem"
 
 	//"k8s.io/api"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -43,6 +40,7 @@ import (
 
 	configv1 "github.com/kenmoini/certificate-sentinel-operator/apis/config/v1"
 	defaults "github.com/kenmoini/certificate-sentinel-operator/controllers/defaults"
+	helpers "github.com/kenmoini/certificate-sentinel-operator/controllers/helpers"
 )
 
 //========================================================================== SPOT TYPES
@@ -53,17 +51,10 @@ type CertificateSentinelReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-type timeSlices []timeSlice
-
-type timeSlice struct {
-	Time    time.Time
-	DaysOut int
-}
-
 //========================================================================== INIT VARS
 // Implement reconcile.Reconciler so the controller can reconcile objects
 var _ reconcile.Reconciler = &CertificateSentinelReconciler{}
-var lggr = log.Log.WithName("cert-sentinel-controller")
+var lggr = log.Log.WithName("certificate-sentinel-controller")
 
 //========================================================================== INIT FUNC
 // init is fired when this controller is started
@@ -72,63 +63,20 @@ func init() {
 	log.SetLogger(zap.New())
 }
 
-// decodeCertificateBytes decodes the byte slice from a Secret data item into a PEM and then into an x509 DER object
-func decodeCertificateBytes(s []byte) ([]*x509.Certificate, error) {
-	block, rest := pem.Decode(s)
-
-	// Check to see if this can be decoded into a PEM block
-	if block == nil || block.Type != "CERTIFICATE" {
-		lggr.Info("Failed to decode PEM block containing a Certificate: " + string(rest))
-	}
-
-	// Parse the Certificate
-	certs, err := x509.ParseCertificates(block.Bytes)
-	if err != nil {
-		lggr.Info("Failed to decode certificate!")
-		fmt.Printf("Failed to decode certificate %v\n", err)
-		return nil, err
-	}
-	return certs, nil
-}
-
-// parseCertificatesIntoLists takes a slice of certificates and all the other supporting information to create a CertificateInformation return to add to .status/alert report
-func parseCertificatesIntoLists(certs []*x509.Certificate, timeOut []timeSlice, namespace string, name string, dataKey string, kind string, apiVersion string) (discovered []configv1.CertificateInformation, expired []configv1.CertificateInformation) {
-	discoveredL := []configv1.CertificateInformation{}
-	expiredL := []configv1.CertificateInformation{}
-	// Loop over parsed certificates
-	for _, cert := range certs {
-		var triggeredDaysOut []int
-		expirationDate := cert.NotAfter
-		// Loop through the timeOut slice, add triggered values to the certInfo config for priority ranking
-		for _, d := range timeOut {
-			utcTime := d.Time.UTC()
-			if utcTime.After(expirationDate) {
-				lggr.Info("Certificate will expire in less than " + fmt.Sprint(d.DaysOut) + " days! Date: " + expirationDate.String())
-				triggeredDaysOut = append(triggeredDaysOut, d.DaysOut)
-			}
-		}
-		// Create CertificateInformation object
-		certInfo := configv1.CertificateInformation{Namespace: namespace, Name: name, DataKey: dataKey, Kind: kind, APIVersion: apiVersion, Expiration: expirationDate.String(), CertificateAuthorityCommonName: cert.Issuer.CommonName, IsCertificateAuthority: cert.IsCA, TriggeredDaysOut: triggeredDaysOut}
-		// This certificate is not expired
-		discoveredL = append(discoveredL, certInfo)
-		if len(triggeredDaysOut) != 0 {
-			expiredL = append(expiredL, certInfo)
-		}
-	}
-	return discoveredL, expiredL
-}
-
-// daysOutToTimeOut converts an int slice of the number of days out to trigger an expiration alert on into a []timeSlice time.Time array of computed date values to compare against certificate expiration dates with time.After
-func daysOutToTimeOut(targetDaysOut []int) []timeSlice {
+// daysOutToTimeOut converts an int slice of the number of days out to trigger an expiration alert on into a []configv1.TimeSlice time.Time array of computed date values to compare against certificate expiration dates with time.After
+func daysOutToTimeOut(targetDaysOut []int) []configv1.TimeSlice {
 	// Set Active DaysOut and time.Time formatted future dates
 	daysOut := targetDaysOut
 	if len(targetDaysOut) == 0 {
 		daysOut = defaults.DaysOut
 	}
-	timeNow := time.Now()
-	timeOut := []timeSlice{}
-	for _, r := range daysOut {
-		tSlice := timeSlice{Time: timeNow.Add(time.Hour * 24 * time.Duration(r)), DaysOut: r}
+
+	timeNow := metav1.Now()
+	timeOut := []configv1.TimeSlice{}
+
+	for _, tR := range daysOut {
+		futureTime := time.Hour * 24 * time.Duration(tR)
+		tSlice := configv1.TimeSlice{Time: metav1.NewTime(timeNow.Add(futureTime)), DaysOut: tR}
 		timeOut = append(timeOut, tSlice)
 	}
 	return timeOut
@@ -326,8 +274,8 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 								// See if this contains text about a Certificate
 								if strings.Contains(sDataStr, "-----BEGIN CERTIFICATE-----") {
 									lggr.Info("CERTIFICATE FOUND! - ns/" + el + " - secret/" + string(e.Name) + " - key:" + k)
-									certs, _ := decodeCertificateBytes(s)
-									discovered, expired := parseCertificatesIntoLists(certs, timeOut, el, e.Name, k, targetKind, targetAPIVersion)
+									certs, _ := helpers.DecodeCertificateBytes(s, lggr)
+									discovered, expired := helpers.ParseCertificatesIntoLists(certs, timeOut, el, e.Name, k, targetKind, targetAPIVersion, lggr)
 
 									// Add decoded certificate to DiscoveredCertificates
 									if len(discovered) != 0 {
@@ -367,8 +315,8 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 							// See if this contains text about a Certificate
 							if strings.Contains(string(cm), "-----BEGIN CERTIFICATE-----") {
 								lggr.Info("CERTIFICATE FOUND! - ns/" + el + " - configmap/" + string(e.Name) + " - key:" + k)
-								certs, _ := decodeCertificateBytes([]byte(cm))
-								discovered, expired := parseCertificatesIntoLists(certs, timeOut, el, e.Name, k, targetKind, targetAPIVersion)
+								certs, _ := helpers.DecodeCertificateBytes([]byte(cm), lggr)
+								discovered, expired := helpers.ParseCertificatesIntoLists(certs, timeOut, el, e.Name, k, targetKind, targetAPIVersion, lggr)
 
 								// Add decoded certificate to DiscoveredCertificates
 								if len(discovered) != 0 {

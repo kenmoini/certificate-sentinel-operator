@@ -159,7 +159,7 @@ func createSMTPReport(certificateSentinel configv1.CertificateSentinel, lggr log
 			}
 
 			// Send the message
-			sendSMTPMail(alert.AlertConfiguration.SMTPAuthType,
+			helpers.SendSMTPMail(alert.AlertConfiguration.SMTPAuthType,
 				username,
 				password,
 				identity,
