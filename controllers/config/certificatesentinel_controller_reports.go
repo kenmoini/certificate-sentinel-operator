@@ -45,7 +45,7 @@ func processReports(certificateSentinel configv1.CertificateSentinel, lggr logr.
 		totalAlerts = append(totalAlerts, alert.AlertName)
 	}
 
-	// Debug logging lol
+	// Uncomment in case of emergency
 	//loggerReport := createLoggerReport(certificateSentinel, lggr)
 	//lggr.Info(loggerReport)
 	//smtpReport := createSMTPReport(certificateSentinel, lggr, clnt)

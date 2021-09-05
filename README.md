@@ -6,12 +6,18 @@
 
 #### Tested on OpenShift 4.8
 
-The Certificate Sentinel Operator allows for the scanning and reporting of SSL Certificates within a Kubernetes/OpenShift cluster.
+> The Certificate Sentinel Operator allows for the scanning and reporting of SSL Certificates within a Kubernetes/OpenShift cluster.
+
+This Operator provides two Custom Resource Definitions (CRDs):
+
+- **CertificateSentinel** - This provides scanning of a cluster/namespace(es) for PEM-encoded x509 Certificates, generating an overall inventory list, list of expiring certificates, and produces STDOUT and SMTP reports.
+- **KeystoreSentinel** - This provides scanning of a cluster/namespace(es) for x509 Certificates in Java Keystores, generating an overall inventory list, list of expiring certificates, and produces STDOUT and SMTP reports.
 
 ## Documentation
 
 - [Quickstart](https://github.com/PolyglotSystems/certificate-sentinel-operator/tree/main/docs/quickstart.md)
 - [SMTP Configuration](https://github.com/PolyglotSystems/certificate-sentinel-operator/tree/main/docs/smtp-configuration.md)
+- [Examples - SSL Certificates](https://github.com/PolyglotSystems/certificate-sentinel-operator/tree/main/examples/ssl_certificates/)
 - [Full YAML Structure - CertificateSentinel](https://github.com/PolyglotSystems/certificate-sentinel-operator/tree/main/docs/full_yaml_spec-CertificateSentinel.md)
 
 ## Deploying the Operator

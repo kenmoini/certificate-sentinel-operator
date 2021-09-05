@@ -97,7 +97,7 @@ type CertificateSentinelStatus struct {
 	LastReportsSent []LastReportSent `json:"lastReportsSent,omitempty"`
 }
 
-// ReportSent composes the information around when reports were last sent for which Alert
+// LastReportSent composes the information around when reports were last sent for which Alert
 type LastReportSent struct {
 	AlertName string `json:"alertName"`
 	LastSent  string `json:"lastSent"`
