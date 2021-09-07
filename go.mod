@@ -3,11 +3,10 @@ module github.com/kenmoini/certificate-sentinel-operator
 go 1.16
 
 require (
-	github.com/go-logr/logr v0.3.0
+	github.com/go-logr/logr v0.4.0
 	github.com/onsi/ginkgo v1.14.1
 	github.com/onsi/gomega v1.10.2
-	github.com/pavel-v-chernykh/keystore-go/v4 v4.1.0 // indirect
-	github.com/xhit/go-simple-mail/v2 v2.10.0 // indirect
+	github.com/xhit/go-simple-mail/v2 v2.10.0
 	k8s.io/api v0.20.2
 	k8s.io/apimachinery v0.20.2
 	k8s.io/client-go v0.20.2
