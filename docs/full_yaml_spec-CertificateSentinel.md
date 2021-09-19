@@ -44,6 +44,7 @@ status: # .status is not user-defined, it will be updated at the end of a full s
         - 9001
         - 9000
       certificateAuthorityCommonName: openshift-service-serving-signer@1630120637
+      commonName: openshift-service-serving
       name: kube-scheduler-operator-serving-cert
       expiration: '2023-08-28 03:17:39 +0000 UTC'
       kind: Secret
@@ -56,6 +57,7 @@ status: # .status is not user-defined, it will be updated at the end of a full s
         - 9001
         - 9000
       certificateAuthorityCommonName: openshift-service-serving-signer@1630120637
+      commonName: openshift-service-serving
       name: kube-scheduler-operator-serving-cert
       expiration: '2023-08-28 03:17:39 +0000 UTC'
       kind: Secret
