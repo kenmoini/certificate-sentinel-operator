@@ -61,6 +61,7 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: secret-reader
+rules:
   - verbs:
       - get
       - watch
@@ -79,6 +80,7 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: configmap-reader
+rules:
   - verbs:
       - get
       - watch
@@ -87,6 +89,49 @@ metadata:
       - ''
     resources:
       - configmaps
+```
+
+#### certificate-reader
+
+```yaml
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: certificate-reader
+rules:
+  - verbs:
+      - get
+      - watch
+      - list
+    apiGroups:
+      - ''
+    resources:
+      - certificates
+```
+
+#### sentinel-reader
+
+This ClusterRole has all the objects defined together
+
+```yaml
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: sentinel-reader
+rules:
+  - verbs:
+      - get
+      - watch
+      - list
+    apiGroups:
+      - ''
+    resources:
+      - certificates
+      - configmaps
+      - namespaces
+      - secrets
 ```
 
 ## 4. Create RoleBindings
@@ -109,7 +154,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: some-service-account
-  apiGroup: rbac.authorization.k8s.io
+  namespace: cert-sentinel
 roleRef:
   kind: ClusterRole
   name: namespace-reader
@@ -128,7 +173,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: some-service-account
-  apiGroup: rbac.authorization.k8s.io
+  namespace: cert-sentinel
 roleRef:
   kind: ClusterRole
   name: secret-reader
@@ -147,7 +192,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: some-service-account
-  apiGroup: rbac.authorization.k8s.io
+  namespace: cert-sentinel
 roleRef:
   kind: ClusterRole
   name: secret-reader
@@ -165,7 +210,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: some-service-account
-  apiGroup: rbac.authorization.k8s.io
+  namespace: cert-sentinel
 roleRef:
   kind: ClusterRole
   name: namespace-reader
@@ -181,10 +226,28 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: some-service-account
-  apiGroup: rbac.authorization.k8s.io
+  namespace: cert-sentinel
 roleRef:
   kind: ClusterRole
   name: secret-reader
+  apiGroup: rbac.authorization.k8s.io
+```
+
+### Cluster-wide access to all needed objects
+
+```yaml
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: read-objects-cert-sentinel
+subjects:
+- kind: ServiceAccount
+  name: some-service-account
+  namespace: cert-sentinel
+roleRef:
+  kind: ClusterRole
+  name: sentinel-reader
   apiGroup: rbac.authorization.k8s.io
 ```
 
@@ -207,22 +270,22 @@ metadata:
   name: certificatesentinel-sample
   namespace: cert-operator
 spec:
-  alerts:
-    - name: secrets-logger
-      type: logger
-  targets:
-    - apiVersion: v1
-      kind: Secret
-      name: all-secrets
-      namespaces:
-        - '*'
-      serviceAccount: some-service-account
-      daysOut:
-        - 30
-        - 60
-        - 90
-        - 9001
-        - 9000
+  alert:
+    name: secrets-logger
+    type: logger
+  target:
+    apiVersion: v1
+    daysOut:
+      - 30
+      - 60
+      - 90
+      - 9001
+      - 9000
+    kind: Secret
+    name: all-secrets
+    namespaces:
+      - '*'
+    serviceAccount: some-service-account
 ```
 
 Once the Operator has found a series of Certificates, it will log the discovered and expired certificates and reflect the data in the `CertificateSentinel.status` as such:
@@ -240,22 +303,22 @@ metadata:
   resourceVersion: '10437267'
   uid: 17db6400-2d6e-4c87-8b95-0a645ce211b9
 spec:
-  alerts:
-    - name: secrets-logger
-      type: logger
-  targets:
-    - apiVersion: v1
-      daysOut:
-        - 30
-        - 60
-        - 90
-        - 9001
-        - 9000
-      kind: Secret
-      name: all-secrets
-      namespaces:
-        - '*'
-      serviceAccount: some-service-account
+  alert:
+    name: secrets-logger
+    type: logger
+  target:
+    apiVersion: v1
+    daysOut:
+      - 30
+      - 60
+      - 90
+      - 9001
+      - 9000
+    kind: Secret
+    name: all-secrets
+    namespaces:
+      - '*'
+    serviceAccount: some-service-account
 status:
   certificatesAtRisk:
     - triggeredDaysOut:
@@ -281,4 +344,5 @@ status:
       isCertificateAuthority: false
       namespace: openshift-kube-scheduler-operator
       apiVersion: v1
+  lastReportSent: 1632023822
 ```
