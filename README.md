@@ -1,6 +1,4 @@
-# certificate-sentinel-operator
-
-## Certificate Sentinel Operator
+# Certificate Sentinel Operator
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/PolyglotSystems/certificate-sentinel-operator.svg)](https://pkg.go.dev/github.com/PolyglotSystems/certificate-sentinel-operator) [![Go Report Card](https://goreportcard.com/badge/github.com/PolyglotSystems/certificate-sentinel-operator)](https://goreportcard.com/report/github.com/PolyglotSystems/certificate-sentinel-operator) [![License: GPL v3](https://img.shields.io/badge/License-Apache%20v2-blue.svg)](https://github.com/PolyglotSystems/certificate-sentinel-operator/tree/main/LICENSE)
 
