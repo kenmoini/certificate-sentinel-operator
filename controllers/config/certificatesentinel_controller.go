@@ -90,8 +90,8 @@ func daysOutToTimeOut(targetDaysOut []int) []configv1.TimeSlice {
 	return timeOut
 }
 
-// getServiceAccount returns a single ServiceAccount by name in a given Namespace
-func getServiceAccount(serviceAccount string, namespace string, clnt client.Client) (*corev1.ServiceAccount, error) {
+// GetServiceAccount returns a single ServiceAccount by name in a given Namespace
+func GetServiceAccount(serviceAccount string, namespace string, clnt client.Client) (*corev1.ServiceAccount, error) {
 	targetServiceAccount := &corev1.ServiceAccount{}
 	err := clnt.Get(context.Background(), client.ObjectKey{
 		Namespace: namespace,
@@ -199,7 +199,7 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	// Get ServiceAccount
 	LogWithLevel("Using ServiceAccount: "+serviceAccount, 2, lggr)
-	targetServiceAccount, _ := getServiceAccount(serviceAccount, certificateSentinel.Namespace, r.Client)
+	targetServiceAccount, _ := GetServiceAccount(serviceAccount, certificateSentinel.Namespace, r.Client)
 	var serviceAccountSecretName string
 	targetServiceAccountSecret := &corev1.Secret{}
 
