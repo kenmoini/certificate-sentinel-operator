@@ -18,6 +18,8 @@ package config
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -193,6 +195,7 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 	targetAPIVersion := certificateSentinel.Spec.Target.APIVersion
 	targetDaysOut := certificateSentinel.Spec.Target.DaysOut
 	effectiveNamespaces := []string{}
+	CertHashList := []string{}
 	timeOut := daysOutToTimeOut(targetDaysOut)
 
 	LogWithLevel("Processing CertificateSentinel target: "+targetName, 2, lggr)
@@ -270,7 +273,7 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 			switch targetKind {
 			//=========================== SECRETS
 			case "Secret":
-				// Get a list of Secrets
+				// Get a list of Secrets in this Namespace
 				secretList := &corev1.SecretList{}
 				err = cl.List(context.Background(), secretList, client.InNamespace(el))
 				if err != nil {
@@ -294,23 +297,48 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 							if strings.Contains(sDataStr, "-----BEGIN CERTIFICATE-----") {
 								LogWithLevel("CERTIFICATE FOUND! - ns/"+el+" - secret/"+string(e.Name)+" - key:"+k, 3, lggr)
 								certs, _ := helpers.DecodeCertificateBytes(s, lggr)
-								discovered, expired, messages := helpers.ParseCertificatesIntoLists(certs, timeOut, el, e.Name, k, targetKind, targetAPIVersion)
-								for _, m := range messages {
-									LogWithLevel(m, 3, lggr)
+
+								// Loop through the current collection of certificates
+								for _, cert := range certs {
+									// Check to see if this has already been added
+
+									// Hash the Certificate and add it to the string slice
+									h := sha1.New()
+									//h.Write(cert.Raw)
+									byteStream := []byte(targetKind + "-" + el + "-" + e.Name + "-" + cert.Subject.CommonName + "-" + cert.Issuer.CommonName)
+									//h.Write(byteStream)
+									h.Write(append(byteStream, cert.Raw...))
+									sha_str := hex.EncodeToString(h.Sum(nil))
+
+									if defaults.ContainsString(CertHashList, sha_str) {
+										// Skipping Certificate
+										LogWithLevel("Already found "+sha_str, 3, lggr)
+									} else {
+										// Add + Process
+										LogWithLevel("Adding "+sha_str, 3, lggr)
+										CertHashList = append(CertHashList, sha_str)
+
+										discovered, expired, messages := helpers.ParseCertificateIntoObjects(cert, timeOut, el, e.Name, k, targetKind, targetAPIVersion)
+										// Loop through passed messages for log level 3
+										for _, m := range messages {
+											LogWithLevel(m, 3, lggr)
+										}
+
+										// Add decoded certificate to DiscoveredCertificates
+										if len(discovered) != 0 {
+											for _, iv := range discovered {
+												statusLists.DiscoveredCertificates = append(statusLists.DiscoveredCertificates, iv)
+											}
+										}
+										// Add to expired certs list
+										if len(expired) != 0 {
+											for _, iv := range expired {
+												statusLists.CertificatesAtRisk = append(statusLists.CertificatesAtRisk, iv)
+											}
+										}
+									}
 								}
 
-								// Add decoded certificate to DiscoveredCertificates
-								if len(discovered) != 0 {
-									for _, iv := range discovered {
-										statusLists.DiscoveredCertificates = append(statusLists.DiscoveredCertificates, iv)
-									}
-								}
-								// Add to expired certs list
-								if len(expired) != 0 {
-									for _, iv := range expired {
-										statusLists.CertificatesAtRisk = append(statusLists.CertificatesAtRisk, iv)
-									}
-								}
 							}
 
 						}
@@ -337,23 +365,47 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 						if strings.Contains(string(cm), "-----BEGIN CERTIFICATE-----") {
 							LogWithLevel("CERTIFICATE FOUND! - ns/"+el+" - configmap/"+string(e.Name)+" - key:"+k, 3, lggr)
 							certs, _ := helpers.DecodeCertificateBytes([]byte(cm), lggr)
-							discovered, expired, messages := helpers.ParseCertificatesIntoLists(certs, timeOut, el, e.Name, k, targetKind, targetAPIVersion)
-							for _, m := range messages {
-								LogWithLevel(m, 3, lggr)
+
+							// Loop through the current collection of certificates
+							for _, cert := range certs {
+								// Check to see if this has already been added
+
+								// Hash the Certificate and add it to the string slice
+								h := sha1.New()
+								byteStream := []byte(targetKind + "-" + el + "-" + e.Name + "-" + cert.Subject.CommonName + "-" + cert.Issuer.CommonName)
+								//h.Write(byteStream)
+								h.Write(append(byteStream, cert.Raw...))
+								sha_str := hex.EncodeToString(h.Sum(nil))
+
+								if defaults.ContainsString(CertHashList, sha_str) {
+									// Skipping Certificate
+									LogWithLevel("Already found "+sha_str, 3, lggr)
+								} else {
+									// Add + Process
+									LogWithLevel("Adding "+sha_str, 3, lggr)
+									CertHashList = append(CertHashList, sha_str)
+
+									discovered, expired, messages := helpers.ParseCertificateIntoObjects(cert, timeOut, el, e.Name, k, targetKind, targetAPIVersion)
+									// Loop through passed messages for log level 3
+									for _, m := range messages {
+										LogWithLevel(m, 3, lggr)
+									}
+
+									// Add decoded certificate to DiscoveredCertificates
+									if len(discovered) != 0 {
+										for _, iv := range discovered {
+											statusLists.DiscoveredCertificates = append(statusLists.DiscoveredCertificates, iv)
+										}
+									}
+									// Add to expired certs list
+									if len(expired) != 0 {
+										for _, iv := range expired {
+											statusLists.CertificatesAtRisk = append(statusLists.CertificatesAtRisk, iv)
+										}
+									}
+								}
 							}
 
-							// Add decoded certificate to DiscoveredCertificates
-							if len(discovered) != 0 {
-								for _, iv := range discovered {
-									statusLists.DiscoveredCertificates = append(statusLists.DiscoveredCertificates, iv)
-								}
-							}
-							// Add to expired certs list
-							if len(expired) != 0 {
-								for _, iv := range expired {
-									statusLists.CertificatesAtRisk = append(statusLists.CertificatesAtRisk, iv)
-								}
-							}
 						}
 					}
 				}

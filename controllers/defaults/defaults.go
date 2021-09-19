@@ -35,7 +35,7 @@ func SetDefaultInt64(defaultVal int64, overrideVal int64) int64 {
 
 // SetDefaultInt32 will return either the default int32 or an overriden value
 func SetDefaultInt32(defaultVal int32, overrideVal int32) int32 {
-	iString := strings.TrimSpace(i32ToString(overrideVal))
+	iString := strings.TrimSpace(I32ToString(overrideVal))
 	if overrideVal == 0 {
 		return defaultVal
 	}
@@ -72,8 +72,8 @@ func SetDefaultBool(defaultVal *bool, overrideVal *bool) *bool {
 	return defaultVal
 }
 
-// i32ToString will convert an int32 to a string for length comparison
-func i32ToString(n int32) string {
+// I32ToString will convert an int32 to a string for length comparison
+func I32ToString(n int32) string {
 	buf := [11]byte{}
 	pos := len(buf)
 	i := int64(n)
