@@ -120,17 +120,31 @@ spec:
                   kind:
                     description: Kind can be either ConfigMap or Secret
                     type: string
-                  labels:
-                    description: Labels is an optional slice of key pair labels to
-                      target, which will limit the scope of the matched objects to
-                      only ones with those labels
-                    items:
-                      type: string
-                    type: array
                   name:
                     description: TargetName is a simple DNS/k8s compliant name for
                       identification purposes
                     type: string
+                  namespaceLabels:
+                    description: NamespaceLabels is an optional slice of key pair
+                      labels to target, which will limit the scope of the matched
+                      namespaces to only ones with those labels
+                    items:
+                      description: LabelSelector is a struct to target specific assets
+                        with matching labels
+                      properties:
+                        filter:
+                          type: string
+                        key:
+                          type: string
+                        value:
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - key
+                      - value
+                      type: object
+                    type: array
                   namespaces:
                     description: Namespaces is the slice of namespaces to watch on
                       the cluster - can be a single wildcard to watch all namespaces
@@ -142,6 +156,27 @@ spec:
                       to scan the cluster - this allows for separate RBAC per targeted
                       object
                     type: string
+                  targetLabels:
+                    description: TargetLabels is an optional slice of key pair labels
+                      to target, which will limit the scope of the matched objects
+                      to only ones with those labels
+                    items:
+                      description: LabelSelector is a struct to target specific assets
+                        with matching labels
+                      properties:
+                        filter:
+                          type: string
+                        key:
+                          type: string
+                        value:
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - key
+                      - value
+                      type: object
+                    type: array
                 required:
                 - apiVersion
                 - kind
@@ -156,62 +191,6 @@ spec:
           status:
             description: CertificateSentinelStatus defines the observed state of CertificateSentinel
             properties:
-              certificatesAtRisk:
-                description: CertificatesAtRisk is the slice of CertificateInformation
-                  that list the discovered certificates that are about to expire
-                items:
-                  description: CertificateInformation provides the status structure
-                    of what certificates have been discovered on the cluster
-                  properties:
-                    apiVersion:
-                      description: APIVersion corresponds to the target kind apiVersion,
-                        so v1 is all really
-                      type: string
-                    certificateAuthorityCommonName:
-                      description: CertificateAuthorityCommonName provides the Common
-                        Name of the signing Certificate Authority
-                      type: string
-                    commonName:
-                      description: Name provides the name of the certificate object
-                      type: string
-                    dataKey:
-                      description: DataKey is the key for the data structure found
-                      type: string
-                    expiration:
-                      description: Expiration is the expiration date in YYYY-MM-DD
-                      type: string
-                    isCertificateAuthority:
-                      description: IsCertificateAuthority returns a bool if the certificate
-                        is a CA
-                      type: boolean
-                    kind:
-                      description: Kind provides the kind of the certificate object
-                      type: string
-                    name:
-                      description: Name provides the name of the certificate object
-                      type: string
-                    namespace:
-                      description: Namespace provides what namespace the certificate
-                        object was found in
-                      type: string
-                    triggeredDaysOut:
-                      description: TriggeredDaysOut provides the slice of days out
-                        that triggered the watch
-                      items:
-                        type: integer
-                      type: array
-                  required:
-                  - apiVersion
-                  - certificateAuthorityCommonName
-                  - commonName
-                  - dataKey
-                  - expiration
-                  - isCertificateAuthority
-                  - kind
-                  - name
-                  - namespace
-                  type: object
-                type: array
               discoveredCertificates:
                 description: DiscoveredCertificates is the slice of CertificateInformation
                   that list the total set of discovered certificates
@@ -268,13 +247,15 @@ spec:
                   - namespace
                   type: object
                 type: array
+              expiringCertificates:
+                description: ExpiringCertificates is the number of certificates that
+                  are expiring
+                type: integer
               lastReportSent:
-                description: LastReportSent is definition of the report that have
-                  been sent out by this Operator and when
+                description: LastReportSent is last time the report was sent out
                 format: int64
                 type: integer
             required:
-            - certificatesAtRisk
             - discoveredCertificates
             type: object
         type: object

@@ -140,6 +140,7 @@ func createTextTableReport(certificateSentinel configv1.CertificateSentinel, lgg
 	currentConfig, _ := config.GetConfig()
 	clusterEndpoint := currentConfig.Host
 	apiPath := currentConfig.APIPath
+	expiredCertificateCount := 0
 
 	// Set up init vars
 	var reportLines string
@@ -154,19 +155,23 @@ func createTextTableReport(certificateSentinel configv1.CertificateSentinel, lgg
 	ExpirationDateLongest := "Expiration Date"
 	TriggeredDaysOutLongest := "Triggered Days Out"
 
-	// Loop through the .status.CertificatesAtRisk
-	for _, certInfo := range certificateSentinel.Status.CertificatesAtRisk {
-		// Set up Logger Lines for length
-		APIVersionLongest = helpers.ReturnLonger(APIVersionLongest, certInfo.APIVersion)
-		KindLongest = helpers.ReturnLonger(KindLongest, certInfo.Kind)
-		NamespaceLongest = helpers.ReturnLonger(NamespaceLongest, certInfo.Namespace)
-		NameLongest = helpers.ReturnLonger(NameLongest, certInfo.Name)
-		DataKeyLongest = helpers.ReturnLonger(DataKeyLongest, certInfo.DataKey)
-		CertCNLongest = helpers.ReturnLonger(CertCNLongest, certInfo.CommonName)
-		IsCALongest = helpers.ReturnLonger(IsCALongest, strconv.FormatBool(certInfo.IsCertificateAuthority))
-		CACNLongest = helpers.ReturnLonger(CACNLongest, certInfo.CertificateAuthorityCommonName)
-		ExpirationDateLongest = helpers.ReturnLonger(ExpirationDateLongest, certInfo.Expiration)
-		TriggeredDaysOutLongest = helpers.ReturnLonger(TriggeredDaysOutLongest, strings.Trim(strings.Join(strings.Fields(fmt.Sprint(certInfo.TriggeredDaysOut)), ", "), "[]"))
+	// Loop through the .status.DiscoveredCertificates
+	for _, certInfo := range certificateSentinel.Status.DiscoveredCertificates {
+		// If this is an expired certificate
+		if len(certInfo.TriggeredDaysOut) > 0 {
+			expiredCertificateCount++
+			// Set up Logger Lines for length
+			APIVersionLongest = helpers.ReturnLonger(APIVersionLongest, certInfo.APIVersion)
+			KindLongest = helpers.ReturnLonger(KindLongest, certInfo.Kind)
+			NamespaceLongest = helpers.ReturnLonger(NamespaceLongest, certInfo.Namespace)
+			NameLongest = helpers.ReturnLonger(NameLongest, certInfo.Name)
+			DataKeyLongest = helpers.ReturnLonger(DataKeyLongest, certInfo.DataKey)
+			CertCNLongest = helpers.ReturnLonger(CertCNLongest, certInfo.CommonName)
+			IsCALongest = helpers.ReturnLonger(IsCALongest, strconv.FormatBool(certInfo.IsCertificateAuthority))
+			CACNLongest = helpers.ReturnLonger(CACNLongest, certInfo.CertificateAuthorityCommonName)
+			ExpirationDateLongest = helpers.ReturnLonger(ExpirationDateLongest, certInfo.Expiration)
+			TriggeredDaysOutLongest = helpers.ReturnLonger(TriggeredDaysOutLongest, strings.Trim(strings.Join(strings.Fields(fmt.Sprint(certInfo.TriggeredDaysOut)), ", "), "[]"))
+		}
 	}
 
 	// Set the longest length value
@@ -183,32 +188,34 @@ func createTextTableReport(certificateSentinel configv1.CertificateSentinel, lgg
 	TotalLineLength := (APIVersionLength + KindLength + NamespaceLength + NameLength + DataKeyLength + CertCNLength + IsCALength + CACNLength + ExpirationDateLength + TriggeredDaysOutLength + 31)
 	LineBreak := helpers.StrPad("-", TotalLineLength, "-", "BOTH")
 
-	// Loop through the .status.CertificatesAtRisk
-	for _, certInfo := range certificateSentinel.Status.CertificatesAtRisk {
-		// Set up Logger Lines
-		loggerReportLineStructure := LoggerReportLineStructure{
-			APIVersion:                     helpers.StrPad(certInfo.APIVersion, APIVersionLength, " ", "BOTH"),
-			Kind:                           helpers.StrPad(certInfo.Kind, KindLength, " ", "BOTH"),
-			Namespace:                      helpers.StrPad(certInfo.Namespace, NamespaceLength, " ", "BOTH"),
-			Name:                           helpers.StrPad(certInfo.Name, NameLength, " ", "BOTH"),
-			Key:                            helpers.StrPad(certInfo.DataKey, DataKeyLength, " ", "BOTH"),
-			CommonName:                     helpers.StrPad(certInfo.CommonName, CertCNLength, " ", "BOTH"),
-			IsCA:                           helpers.StrPad(strconv.FormatBool(certInfo.IsCertificateAuthority), IsCALength, " ", "BOTH"),
-			CertificateAuthorityCommonName: helpers.StrPad(certInfo.CertificateAuthorityCommonName, CACNLength, " ", "BOTH"),
-			ExpirationDate:                 helpers.StrPad(certInfo.Expiration, ExpirationDateLength, " ", "BOTH"),
-			TriggeredDaysOut:               helpers.StrPad(strings.Trim(strings.Join(strings.Fields(fmt.Sprint(certInfo.TriggeredDaysOut)), ", "), "[]"), TriggeredDaysOutLength, " ", "BOTH"),
+	// Loop through the .status.DiscoveredCertificates
+	for _, certInfo := range certificateSentinel.Status.DiscoveredCertificates {
+		if len(certInfo.TriggeredDaysOut) > 0 {
+			// Set up Logger Lines
+			loggerReportLineStructure := LoggerReportLineStructure{
+				APIVersion:                     helpers.StrPad(certInfo.APIVersion, APIVersionLength, " ", "BOTH"),
+				Kind:                           helpers.StrPad(certInfo.Kind, KindLength, " ", "BOTH"),
+				Namespace:                      helpers.StrPad(certInfo.Namespace, NamespaceLength, " ", "BOTH"),
+				Name:                           helpers.StrPad(certInfo.Name, NameLength, " ", "BOTH"),
+				Key:                            helpers.StrPad(certInfo.DataKey, DataKeyLength, " ", "BOTH"),
+				CommonName:                     helpers.StrPad(certInfo.CommonName, CertCNLength, " ", "BOTH"),
+				IsCA:                           helpers.StrPad(strconv.FormatBool(certInfo.IsCertificateAuthority), IsCALength, " ", "BOTH"),
+				CertificateAuthorityCommonName: helpers.StrPad(certInfo.CertificateAuthorityCommonName, CACNLength, " ", "BOTH"),
+				ExpirationDate:                 helpers.StrPad(certInfo.Expiration, ExpirationDateLength, " ", "BOTH"),
+				TriggeredDaysOut:               helpers.StrPad(strings.Trim(strings.Join(strings.Fields(fmt.Sprint(certInfo.TriggeredDaysOut)), ", "), "[]"), TriggeredDaysOutLength, " ", "BOTH"),
+			}
+			lineBuf := new(bytes.Buffer)
+			loggerLineTemplate, err := template.New("loggerLine").Parse(LoggerReportLine)
+			if err != nil {
+				lggr.Error(err, "Error parsing loggerLineTemplate template!")
+			}
+			err = loggerLineTemplate.Execute(lineBuf, loggerReportLineStructure)
+			if err != nil {
+				lggr.Error(err, "Error executing loggerLineTemplate template!")
+			}
+			// Append to total reportLines
+			reportLines = (reportLines + lineBuf.String())
 		}
-		lineBuf := new(bytes.Buffer)
-		loggerLineTemplate, err := template.New("loggerLine").Parse(LoggerReportLine)
-		if err != nil {
-			lggr.Error(err, "Error parsing loggerLineTemplate template!")
-		}
-		err = loggerLineTemplate.Execute(lineBuf, loggerReportLineStructure)
-		if err != nil {
-			lggr.Error(err, "Error executing loggerLineTemplate template!")
-		}
-		// Append to total reportLines
-		reportLines = (reportLines + lineBuf.String())
 	}
 
 	// Setup Logger Headers
@@ -241,7 +248,7 @@ func createTextTableReport(certificateSentinel configv1.CertificateSentinel, lgg
 		DateSent:           time.Now().UTC().String(),
 		ClusterAPIEndpoint: clusterEndpoint + apiPath,
 		TotalCerts:         strconv.Itoa(len(certificateSentinel.Status.DiscoveredCertificates)),
-		ExpiringCerts:      strconv.Itoa(len(certificateSentinel.Status.CertificatesAtRisk)),
+		ExpiringCerts:      strconv.Itoa(expiredCertificateCount),
 		ReportLines:        reportLines,
 		Footer:             headerBuf.String(),
 		Header:             headerBuf.String(),
@@ -265,55 +272,59 @@ func createSMTPHTMLReport(certificateSentinel configv1.CertificateSentinel, lggr
 
 	// Set up init vars
 	var reportLines string
+	expiredCertificateCount := 0
 
 	currentConfig, _ := config.GetConfig()
 	clusterEndpoint := currentConfig.Host
 	apiPath := currentConfig.APIPath
 
-	// Loop through the .status.CertificatesAtRisk
-	for iCI, certInfo := range certificateSentinel.Status.CertificatesAtRisk {
-		// Set up styles
-		var rowStyles string
-		cellStyles := "padding:6px;text-align:left;"
-		if iCI%2 == 0 {
-			rowStyles = "background:#FFF;"
-		} else {
-			rowStyles = "background:#FAFAFA;"
-		}
+	// Loop through the .status.DiscoveredCertificates
+	for iCI, certInfo := range certificateSentinel.Status.DiscoveredCertificates {
+		if len(certInfo.TriggeredDaysOut) > 0 {
+			expiredCertificateCount++
+			// Set up styles
+			var rowStyles string
+			cellStyles := "padding:6px;text-align:left;"
+			if iCI%2 == 0 {
+				rowStyles = "background:#FFF;"
+			} else {
+				rowStyles = "background:#FAFAFA;"
+			}
 
-		// Parse time to format
-		inputTimelayout := "2006-01-02 15:04:05 -0700 MST"
-		t, err := time.Parse(inputTimelayout, certInfo.Expiration)
-		if err != nil {
-			fmt.Printf("Error parsing time! %+v\n", err)
-		}
+			// Parse time to format
+			inputTimelayout := "2006-01-02 15:04:05 -0700 MST"
+			t, err := time.Parse(inputTimelayout, certInfo.Expiration)
+			if err != nil {
+				fmt.Printf("Error parsing time! %+v\n", err)
+			}
 
-		// Set up HTML Lines
-		htmlSMTPReportLine := HTMLReportLineStructure{
-			APIVersion:                     certInfo.APIVersion,
-			Kind:                           certInfo.Kind,
-			Namespace:                      certInfo.Namespace,
-			Name:                           certInfo.Name,
-			Key:                            certInfo.DataKey,
-			CommonName:                     certInfo.CommonName,
-			IsCA:                           strconv.FormatBool(certInfo.IsCertificateAuthority),
-			CertificateAuthorityCommonName: certInfo.CertificateAuthorityCommonName,
-			ExpirationDate:                 string(t.Format(time.RFC822Z)),
-			TriggeredDaysOut:               strings.Trim(strings.Join(strings.Fields(fmt.Sprint(certInfo.TriggeredDaysOut)), ", "), "[]"),
-			RowStyles:                      rowStyles,
-			CellStyles:                     cellStyles,
+			// Set up HTML Lines
+			htmlSMTPReportLine := HTMLReportLineStructure{
+				APIVersion:                     certInfo.APIVersion,
+				Kind:                           certInfo.Kind,
+				Namespace:                      certInfo.Namespace,
+				Name:                           certInfo.Name,
+				Key:                            certInfo.DataKey,
+				CommonName:                     certInfo.CommonName,
+				IsCA:                           strconv.FormatBool(certInfo.IsCertificateAuthority),
+				CertificateAuthorityCommonName: certInfo.CertificateAuthorityCommonName,
+				ExpirationDate:                 string(t.Format(time.RFC822Z)),
+				TriggeredDaysOut:               strings.Trim(strings.Join(strings.Fields(fmt.Sprint(certInfo.TriggeredDaysOut)), ", "), "[]"),
+				RowStyles:                      rowStyles,
+				CellStyles:                     cellStyles,
+			}
+			lineBuf := new(bytes.Buffer)
+			htmlLineTemplate, err := template.New("tableLine").Parse(HTMLSMTPReportLine)
+			if err != nil {
+				lggr.Error(err, "Error parsing htmlSMTPReportLine template!")
+			}
+			err = htmlLineTemplate.Execute(lineBuf, htmlSMTPReportLine)
+			if err != nil {
+				lggr.Error(err, "Error executing htmlSMTPReportLine template!")
+			}
+			// Append to total reportLines
+			reportLines = (reportLines + lineBuf.String())
 		}
-		lineBuf := new(bytes.Buffer)
-		htmlLineTemplate, err := template.New("tableLine").Parse(HTMLSMTPReportLine)
-		if err != nil {
-			lggr.Error(err, "Error parsing htmlSMTPReportLine template!")
-		}
-		err = htmlLineTemplate.Execute(lineBuf, htmlSMTPReportLine)
-		if err != nil {
-			lggr.Error(err, "Error executing htmlSMTPReportLine template!")
-		}
-		// Append to total reportLines
-		reportLines = (reportLines + lineBuf.String())
 	}
 
 	// Set up styles for headers
@@ -352,7 +363,7 @@ func createSMTPHTMLReport(certificateSentinel configv1.CertificateSentinel, lggr
 		DateSent:           string(time.Now().UTC().Format(time.RFC822Z)),
 		ClusterAPIEndpoint: clusterEndpoint + apiPath,
 		TotalCerts:         strconv.Itoa(len(certificateSentinel.Status.DiscoveredCertificates)),
-		ExpiringCerts:      strconv.Itoa(len(certificateSentinel.Status.CertificatesAtRisk)),
+		ExpiringCerts:      strconv.Itoa(expiredCertificateCount),
 		TableRows:          reportLines,
 		THead:              headerBuf.String(),
 		TFoot:              headerBuf.String(),

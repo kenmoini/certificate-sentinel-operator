@@ -25,14 +25,17 @@ import (
 
 // KeystoreSentinelSpec defines the desired state of KeystoreSentinel
 type KeystoreSentinelSpec struct {
-	// Targets is the list of K8s Objects to watch on the cluster
-	Targets KeystoreTarget `json:"target"`
+	// Target is the K8s Objects to watch on the cluster
+	Target KeystoreTarget `json:"target"`
 
-	// Alerts is where the alerts will be sent to
-	Alerts Alert `json:"alert"`
+	// Alert is where the alerts will be sent to
+	Alert Alert `json:"alert"`
 
 	// ScanningInterval is how frequently the controller scans the cluster for these targets - defaults to 30s
 	ScanningInterval int `json:"scanningInterval,omitempty"`
+
+	// LogLevel controls the verbosity of the  - defaults to 1
+	LogLevel int `json:"logLevel,omitempty"`
 }
 
 // KeystoreTarget provide what sort of objects we're watching for, be that a ConfigMap or a Secret
@@ -41,12 +44,14 @@ type KeystoreTarget struct {
 	TargetName string `json:"name"`
 	// Namespaces is the slice of namespaces to watch on the cluster - can be a single wildcard to watch all namespaces
 	Namespaces []string `json:"namespaces"`
+	// NamespaceLabels is an optional slice of key pair labels to target, which will limit the scope of the matched namespaces to only ones with those labels
+	NamespaceLabels []LabelSelector `json:"namespaceLabels,omitempty"`
 	// Kind can be either ConfigMap or Secret
 	Kind string `json:"kind"`
 	// APIVersion corresponds to the target kind apiVersion, so v1 is all really
 	APIVersion string `json:"apiVersion"`
-	// Labels is an optional slice of key pair labels to target, which will limit the scope of the matched objects to only ones with those labels
-	Labels []string `json:"labels,omitempty"`
+	// TargetLabels is an optional slice of key pair labels to target, which will limit the scope of the matched objects to only ones with those labels
+	TargetLabels []LabelSelector `json:"targetLabels,omitempty"`
 	// ServiceAccount is the ServiceAccount to use in order to scan the cluster - this allows for separate RBAC per targeted object
 	ServiceAccount string `json:"serviceAccount"`
 	// DaysOut is the slice of days out alerts should be triggered at.  Defaults to 30, 60, and 90
@@ -57,10 +62,11 @@ type KeystoreTarget struct {
 
 // KeystorePassword provides the input for the Keystore Password
 type KeystorePassword struct {
-	// Type could be 'secret' or 'list'
+	// Type could be 'secret', 'labels', or 'list'
 	Type   string          `json:"type"`
 	List   []string        `json:"list,omitempty"`
-	Secret SecretReference `json:"secret,omitempty"`
+	Secret SecretReference `json:"secretRef,omitempty"`
+	Labels []LabelSelector `json:"labelRef,omitempty"`
 }
 
 // SecretReference provides the internal Secret reference to unlock the Keystore

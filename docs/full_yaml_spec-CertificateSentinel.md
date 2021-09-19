@@ -39,19 +39,6 @@ spec:
       - '*'
     serviceAccount: some-service-account # the ServiceAccount in tis namespace to use against the K8s/OCP API
 status: # .status is not user-defined, it will be updated at the end of a full scan/operator reconciliation and will list any certificates found, the ones expiring within our designated daysOut thresholds, and when the last reports were sent for each alert
-  certificatesAtRisk:
-    - triggeredDaysOut:
-        - 9001
-        - 9000
-      certificateAuthorityCommonName: openshift-service-serving-signer@1630120637
-      commonName: openshift-service-serving
-      name: kube-scheduler-operator-serving-cert
-      expiration: '2023-08-28 03:17:39 +0000 UTC'
-      kind: Secret
-      dataKey: tls.crt
-      isCertificateAuthority: false
-      namespace: openshift-kube-scheduler-operator
-      apiVersion: v1
   discoveredCertificates:
     - triggeredDaysOut:
         - 9001

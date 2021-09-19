@@ -14,6 +14,8 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: cert-sentinel
+  labels:
+    polyglot.systems/certificate-sentinel-namespace: "true"
 spec: {}
 ```
 
@@ -320,18 +322,6 @@ spec:
       - '*'
     serviceAccount: some-service-account
 status:
-  certificatesAtRisk:
-    - triggeredDaysOut:
-        - 9001
-        - 9000
-      certificateAuthorityCommonName: openshift-service-serving-signer@1630120637
-      name: kube-scheduler-operator-serving-cert
-      expiration: '2023-08-28 03:17:39 +0000 UTC'
-      kind: Secret
-      dataKey: tls.crt
-      isCertificateAuthority: false
-      namespace: openshift-kube-scheduler-operator
-      apiVersion: v1
   discoveredCertificates:
     - triggeredDaysOut:
         - 9001
