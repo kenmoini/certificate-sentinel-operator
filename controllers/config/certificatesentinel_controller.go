@@ -18,7 +18,6 @@ package config
 
 import (
 	"context"
-	"fmt"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,6 +31,7 @@ import (
 	//"k8s.io/api"
 	ctrl "sigs.k8s.io/controller-runtime"
 
+	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -55,12 +55,20 @@ type CertificateSentinelReconciler struct {
 // Implement reconcile.Reconciler so the controller can reconcile objects
 var _ reconcile.Reconciler = &CertificateSentinelReconciler{}
 var lggr = log.Log.WithName("certificate-sentinel-controller")
+var SetLogLevel int
 
 //========================================================================== INIT FUNC
 // init is fired when this controller is started
 func init() {
 	// Set logging
 	log.SetLogger(zap.New())
+}
+
+// LogWithLevel implements simple log levels
+func LogWithLevel(s string, level int, l logr.Logger) {
+	if SetLogLevel >= level {
+		l.Info(s)
+	}
 }
 
 // daysOutToTimeOut converts an int slice of the number of days out to trigger an expiration alert on into a []configv1.TimeSlice time.Time array of computed date values to compare against certificate expiration dates with time.After
@@ -91,7 +99,7 @@ func getServiceAccount(serviceAccount string, namespace string, clnt client.Clie
 	}, targetServiceAccount)
 
 	if err != nil {
-		lggr.Info("Failed to get serviceaccount/" + serviceAccount + " in namespace/" + namespace)
+		lggr.Error(err, "Failed to get serviceaccount/"+serviceAccount+" in namespace/"+namespace)
 		return targetServiceAccount, err
 	}
 	return targetServiceAccount, nil
@@ -106,7 +114,7 @@ func GetSecret(name string, namespace string, clnt client.Client) (*corev1.Secre
 	}, targetSecret)
 
 	if err != nil {
-		lggr.Info("Failed to get secret/" + name + " in namespace/" + namespace)
+		lggr.Error(err, "Failed to get secret/"+name+" in namespace/"+namespace)
 		return targetSecret, err
 	}
 	return targetSecret, nil
@@ -121,7 +129,7 @@ func getConfigMap(name string, namespace string, clnt client.Client) (*corev1.Co
 	}, targetConfigMap)
 
 	if err != nil {
-		lggr.Info("Failed to get configmap/" + name + " in namespace/" + namespace)
+		lggr.Error(err, "Failed to get configmap/"+name+" in namespace/"+namespace)
 		return targetConfigMap, err
 	}
 	return targetConfigMap, nil
@@ -154,8 +162,8 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 		CertificatesAtRisk:     []configv1.CertificateInformation{},
 	}
 
-	//lggr.Info("Connecting to:" + clusterEndpoint)
-	//lggr.Info("API Path:" + apiPath)
+	LogWithLevel("Connecting to:"+clusterEndpoint, 3, lggr)
+	LogWithLevel("API Path:"+apiPath, 3, lggr)
 
 	// Fetch the CertificateSentinel instance
 	certificateSentinel := &configv1.CertificateSentinel{}
@@ -165,7 +173,7 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
-			lggr.Info("CertificateSentinel resource not found on the cluster.")
+			lggr.Error(err, "CertificateSentinel resource not found on the cluster.")
 			return ctrl.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
@@ -174,149 +182,122 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	// Log the used certificateSentinel
-	lggr.Info("CertificateSentinel loaded!  Found '" + certificateSentinel.Name + "' in 'namespace/" + certificateSentinel.Namespace + "'")
+	LogWithLevel("CertificateSentinel loaded!  Found '"+certificateSentinel.Name+"' in 'namespace/"+certificateSentinel.Namespace+"'", 1, lggr)
+	SetLogLevel = defaults.SetDefaultInt(defaults.LogLevel, certificateSentinel.Spec.LogLevel)
 
 	// Set default vars
 	scanningInterval := defaults.SetDefaultInt(defaults.ScanningInterval, certificateSentinel.Spec.ScanningInterval)
+	targetName := certificateSentinel.Spec.Target.TargetName
+	serviceAccount := certificateSentinel.Spec.Target.ServiceAccount
+	targetKind := certificateSentinel.Spec.Target.Kind
+	targetAPIVersion := certificateSentinel.Spec.Target.APIVersion
+	targetDaysOut := certificateSentinel.Spec.Target.DaysOut
+	effectiveNamespaces := []string{}
+	timeOut := daysOutToTimeOut(targetDaysOut)
 
-	// Loop through Targets
-	for _, element := range certificateSentinel.Spec.Targets {
-		// Set Default Vars
-		targetName := element.TargetName
-		serviceAccount := element.ServiceAccount
-		targetKind := element.Kind
-		targetAPIVersion := element.APIVersion
-		targetDaysOut := element.DaysOut
-		effectiveNamespaces := []string{}
-		timeOut := daysOutToTimeOut(targetDaysOut)
+	LogWithLevel("Processing CertificateSentinel target: "+targetName, 2, lggr)
 
-		lggr.Info("Processing CertificateSentinel target: " + targetName)
+	// Get ServiceAccount
+	LogWithLevel("Using ServiceAccount: "+serviceAccount, 2, lggr)
+	targetServiceAccount, _ := getServiceAccount(serviceAccount, certificateSentinel.Namespace, r.Client)
+	var serviceAccountSecretName string
+	targetServiceAccountSecret := &corev1.Secret{}
 
-		// Get ServiceAccount
-		lggr.Info("Using ServiceAccount: " + serviceAccount)
-		targetServiceAccount, _ := getServiceAccount(serviceAccount, certificateSentinel.Namespace, r.Client)
-		serviceAccountSecretName := targetServiceAccount.Secrets[0].Name
-
-		// Get Secret
-		lggr.Info("Using Secret: " + serviceAccountSecretName)
-		targetServiceAccountSecret, _ := GetSecret(serviceAccountSecretName, certificateSentinel.Namespace, r.Client)
-
-		// Set up new client config
-		newConfig := &rest.Config{
-			BearerToken: string(targetServiceAccountSecret.Data[corev1.ServiceAccountTokenKey]),
-			Host:        clusterEndpoint,
-			APIPath:     apiPath,
-			TLSClientConfig: rest.TLSClientConfig{
-				CAData: targetServiceAccountSecret.Data[corev1.ServiceAccountRootCAKey],
-			},
+	// Find the right secret
+	for _, em := range targetServiceAccount.Secrets {
+		secret, _ := GetSecret(em.Name, certificateSentinel.Namespace, r.Client)
+		if secret.Type == "kubernetes.io/service-account-token" {
+			// Get Secret
+			serviceAccountSecretName = em.Name
+			LogWithLevel("Using Secret: "+serviceAccountSecretName, 2, lggr)
+			targetServiceAccountSecret, _ = GetSecret(serviceAccountSecretName, certificateSentinel.Namespace, r.Client)
 		}
+	}
 
-		// Set up new Client
-		cl, err := client.New(newConfig, client.Options{})
-		if err != nil {
-			fmt.Println("Failed to create client")
-			fmt.Printf("%+v\n", err)
-			lggr.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
-			time.Sleep(time.Second * time.Duration(scanningInterval))
-			return ctrl.Result{}, err
-		}
+	// We didn't find a Secret to work against the API and thus can't create a new client
+	if serviceAccountSecretName == "" {
+		lggr.Error(err, "Failed to find API Token type Secret in ServiceAccount!")
+		lggr.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
+		time.Sleep(time.Second * time.Duration(scanningInterval))
+		return ctrl.Result{}, err
+	}
 
-		// Loop through target namespaces
-		for _, elem := range element.Namespaces {
-			// This is a wildcard query to search all available namespaces
-			ns := strings.TrimSpace(elem)
-			if ns == "*" {
-				lggr.Info("Querying for namespaces with sa/" + serviceAccount)
-				// Query the API for all available namespaces this SA has access to
-				// Get Namespaces with the cached context
-				namespaceList := &corev1.NamespaceList{}
-				err = cl.List(context.Background(), namespaceList, client.InNamespace(""))
-				if err != nil {
-					lggr.Info("Failed to list namespaces in cluster!")
-					fmt.Printf("Failed to list namespaces in cluster: %v\n", err)
-					lggr.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
-					time.Sleep(time.Second * time.Duration(scanningInterval))
-					return ctrl.Result{}, err
-				}
-				// Loop through Namespaces, create the effectiveNamespaces slice
-				for _, el := range namespaceList.Items {
-					// Check if the SA can query the types being targeted
-					effectiveNamespaces = append(effectiveNamespaces, el.Name)
-				}
-			} else {
-				effectiveNamespaces = append(effectiveNamespaces, ns)
+	// Set up new client config
+	newConfig := &rest.Config{
+		BearerToken: string(targetServiceAccountSecret.Data[corev1.ServiceAccountTokenKey]),
+		Host:        clusterEndpoint,
+		APIPath:     apiPath,
+		TLSClientConfig: rest.TLSClientConfig{
+			CAData: targetServiceAccountSecret.Data[corev1.ServiceAccountRootCAKey],
+		},
+	}
+
+	// Set up new Client
+	cl, err := client.New(newConfig, client.Options{})
+	if err != nil {
+		lggr.Error(err, "Failed to create client")
+		lggr.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
+		time.Sleep(time.Second * time.Duration(scanningInterval))
+		return ctrl.Result{}, err
+	}
+
+	// Loop through target namespaces
+	for _, elem := range certificateSentinel.Spec.Target.Namespaces {
+		// This is a wildcard query to search all available namespaces
+		ns := strings.TrimSpace(elem)
+		if ns == "*" {
+			LogWithLevel("Querying for namespaces with sa/"+serviceAccount, 3, lggr)
+			// Query the API for all available namespaces this SA has access to
+			// Get Namespaces with the cached context
+			namespaceList := &corev1.NamespaceList{}
+			err = cl.List(context.Background(), namespaceList, client.InNamespace(""))
+			if err != nil {
+				lggr.Error(err, "Failed to list namespaces in cluster!")
+				lggr.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
+				time.Sleep(time.Second * time.Duration(scanningInterval))
+				return ctrl.Result{}, err
 			}
-			// Loop through the namespaces in scope for this target
-			for _, el := range effectiveNamespaces {
-				switch targetKind {
-				//=========================== SECRETS
-				case "Secret":
-					// Get a list of Secrets
-					secretList := &corev1.SecretList{}
-					err = cl.List(context.Background(), secretList, client.InNamespace(el))
-					if err != nil {
-						lggr.Info("Failed to list secrets in namespace/" + el)
-					}
+			// Loop through Namespaces, create the effectiveNamespaces slice
+			for _, el := range namespaceList.Items {
+				// Check if the SA can query the types being targeted
+				effectiveNamespaces = append(effectiveNamespaces, el.Name)
+			}
+		} else {
+			effectiveNamespaces = append(effectiveNamespaces, ns)
+		}
+		// Loop through the namespaces in scope for this target
+		for _, el := range effectiveNamespaces {
+			switch targetKind {
+			//=========================== SECRETS
+			case "Secret":
+				// Get a list of Secrets
+				secretList := &corev1.SecretList{}
+				err = cl.List(context.Background(), secretList, client.InNamespace(el))
+				if err != nil {
+					lggr.Error(err, "Failed to list secrets in namespace/"+el)
+				}
 
-					// Loop through Secrets
-					for _, e := range secretList.Items {
-						secretType := string(e.Type)
-						if secretType == string(corev1.SecretTypeOpaque) || secretType == string(corev1.SecretTypeTLS) {
-							lggr.Info("Getting secret/" + e.Name + " in namespace/" + el + " (type=" + secretType + ")")
+				// Loop through Secrets
+				for _, e := range secretList.Items {
+					secretType := string(e.Type)
+					if secretType == string(corev1.SecretTypeOpaque) || secretType == string(corev1.SecretTypeTLS) {
+						LogWithLevel("Getting secret/"+e.Name+" in namespace/"+el+" (type="+secretType+")", 3, lggr)
 
-							secretItem, _ := GetSecret(string(e.Name), el, cl)
+						secretItem, _ := GetSecret(string(e.Name), el, cl)
 
-							// Get the actual secret data
-							for k, s := range secretItem.Data {
-								// Store the secret as a base64 decoded string from the byte slice
-								sDataStr := string(s)
+						// Get the actual secret data
+						for k, s := range secretItem.Data {
+							// Store the secret as a base64 decoded string from the byte slice
+							sDataStr := string(s)
 
-								// See if this contains text about a Certificate
-								if strings.Contains(sDataStr, "-----BEGIN CERTIFICATE-----") {
-									lggr.Info("CERTIFICATE FOUND! - ns/" + el + " - secret/" + string(e.Name) + " - key:" + k)
-									certs, _ := helpers.DecodeCertificateBytes(s, lggr)
-									discovered, expired := helpers.ParseCertificatesIntoLists(certs, timeOut, el, e.Name, k, targetKind, targetAPIVersion, lggr)
-
-									// Add decoded certificate to DiscoveredCertificates
-									if len(discovered) != 0 {
-										for _, iv := range discovered {
-											statusLists.DiscoveredCertificates = append(statusLists.DiscoveredCertificates, iv)
-										}
-									}
-									// Add to expired certs list
-									if len(expired) != 0 {
-										for _, iv := range expired {
-											statusLists.CertificatesAtRisk = append(statusLists.CertificatesAtRisk, iv)
-										}
-									}
-								}
-
-							}
-						}
-					}
-				//=========================== CONFIGMAPS
-				case "ConfigMap":
-					lggr.Info("Checking for access to ConfigMap in ns/" + el)
-					// Get the list of ConfigMaps in this namespace
-					configMapList := &corev1.ConfigMapList{}
-					err = cl.List(context.Background(), configMapList, client.InNamespace(el))
-					if err != nil {
-						lggr.Info("Failed to list ConfigMaps in ns/" + el)
-						fmt.Printf("Failed to list ConfigMaps in ns/"+el+": %v\n", err)
-					}
-
-					// Loop through ConfigMaps
-					for _, e := range configMapList.Items {
-						lggr.Info("Getting configmap/" + e.Name + " in namespace/" + el)
-						configMapItem, _ := getConfigMap(string(e.Name), el, cl)
-
-						// Loop through the actual ConfigMap data
-						for k, cm := range configMapItem.Data {
 							// See if this contains text about a Certificate
-							if strings.Contains(string(cm), "-----BEGIN CERTIFICATE-----") {
-								lggr.Info("CERTIFICATE FOUND! - ns/" + el + " - configmap/" + string(e.Name) + " - key:" + k)
-								certs, _ := helpers.DecodeCertificateBytes([]byte(cm), lggr)
-								discovered, expired := helpers.ParseCertificatesIntoLists(certs, timeOut, el, e.Name, k, targetKind, targetAPIVersion, lggr)
+							if strings.Contains(sDataStr, "-----BEGIN CERTIFICATE-----") {
+								LogWithLevel("CERTIFICATE FOUND! - ns/"+el+" - secret/"+string(e.Name)+" - key:"+k, 3, lggr)
+								certs, _ := helpers.DecodeCertificateBytes(s, lggr)
+								discovered, expired, messages := helpers.ParseCertificatesIntoLists(certs, timeOut, el, e.Name, k, targetKind, targetAPIVersion)
+								for _, m := range messages {
+									LogWithLevel(m, 3, lggr)
+								}
 
 								// Add decoded certificate to DiscoveredCertificates
 								if len(discovered) != 0 {
@@ -331,16 +312,58 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 									}
 								}
 							}
+
 						}
 					}
-				//=========================== DEFAULT - INVALID KIND
-				default:
-					// Unsupported Object Kind
-					lggr.Info("Invalid Target Kind!")
-					lggr.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
-					time.Sleep(time.Second * time.Duration(scanningInterval))
-					return ctrl.Result{}, nil
 				}
+			//=========================== CONFIGMAPS
+			case "ConfigMap":
+				LogWithLevel("Checking for access to ConfigMap in ns/"+el, 3, lggr)
+				// Get the list of ConfigMaps in this namespace
+				configMapList := &corev1.ConfigMapList{}
+				err = cl.List(context.Background(), configMapList, client.InNamespace(el))
+				if err != nil {
+					lggr.Error(err, "Failed to list ConfigMaps in ns/"+el)
+				}
+
+				// Loop through ConfigMaps
+				for _, e := range configMapList.Items {
+					LogWithLevel("Getting configmap/"+e.Name+" in namespace/"+el, 3, lggr)
+					configMapItem, _ := getConfigMap(string(e.Name), el, cl)
+
+					// Loop through the actual ConfigMap data
+					for k, cm := range configMapItem.Data {
+						// See if this contains text about a Certificate
+						if strings.Contains(string(cm), "-----BEGIN CERTIFICATE-----") {
+							LogWithLevel("CERTIFICATE FOUND! - ns/"+el+" - configmap/"+string(e.Name)+" - key:"+k, 3, lggr)
+							certs, _ := helpers.DecodeCertificateBytes([]byte(cm), lggr)
+							discovered, expired, messages := helpers.ParseCertificatesIntoLists(certs, timeOut, el, e.Name, k, targetKind, targetAPIVersion)
+							for _, m := range messages {
+								LogWithLevel(m, 3, lggr)
+							}
+
+							// Add decoded certificate to DiscoveredCertificates
+							if len(discovered) != 0 {
+								for _, iv := range discovered {
+									statusLists.DiscoveredCertificates = append(statusLists.DiscoveredCertificates, iv)
+								}
+							}
+							// Add to expired certs list
+							if len(expired) != 0 {
+								for _, iv := range expired {
+									statusLists.CertificatesAtRisk = append(statusLists.CertificatesAtRisk, iv)
+								}
+							}
+						}
+					}
+				}
+			//=========================== DEFAULT - INVALID KIND
+			default:
+				// Unsupported Object Kind
+				lggr.Info("Invalid Target Kind!")
+				lggr.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
+				time.Sleep(time.Second * time.Duration(scanningInterval))
+				return ctrl.Result{}, nil
 			}
 		}
 	}
@@ -349,17 +372,17 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 	statusChanged := true
 	oldDiscoveredCertificates := certificateSentinel.Status.DiscoveredCertificates
 	oldCertificatesAtRisk := certificateSentinel.Status.CertificatesAtRisk
-	oldLastReportsSent := certificateSentinel.Status.LastReportsSent
+	oldLastReportSent := certificateSentinel.Status.LastReportSent
 
 	// Merge the Certificates into the .status of the CertificateSentinel object
 	certificateSentinel.Status.DiscoveredCertificates = statusLists.DiscoveredCertificates
 	certificateSentinel.Status.CertificatesAtRisk = statusLists.CertificatesAtRisk
 
 	// Process reports if needed
-	certificateSentinel.Status.LastReportsSent = processReports(*certificateSentinel, lggr, r.Client)
+	certificateSentinel.Status.LastReportSent = processReport(*certificateSentinel, lggr, r.Client)
 
 	// Check the difference in structs
-	if reflect.DeepEqual(oldDiscoveredCertificates, certificateSentinel.Status.DiscoveredCertificates) || reflect.DeepEqual(oldCertificatesAtRisk, certificateSentinel.Status.CertificatesAtRisk) || reflect.DeepEqual(oldLastReportsSent, certificateSentinel.Status.LastReportsSent) {
+	if reflect.DeepEqual(oldDiscoveredCertificates, certificateSentinel.Status.DiscoveredCertificates) || reflect.DeepEqual(oldCertificatesAtRisk, certificateSentinel.Status.CertificatesAtRisk) || oldLastReportSent == certificateSentinel.Status.LastReportSent {
 		statusChanged = false
 	}
 
@@ -370,6 +393,7 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, err
 		}
 	}
+	LogWithLevel("Found "+strconv.Itoa(len(certificateSentinel.Status.DiscoveredCertificates))+" Certificates, "+strconv.Itoa(len(certificateSentinel.Status.CertificatesAtRisk))+" of which are at risk of expiring", 2, lggr)
 
 	// Reconcile successful - don't requeue
 	// return ctrl.Result{}, nil

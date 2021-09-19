@@ -26,10 +26,10 @@ import (
 // KeystoreSentinelSpec defines the desired state of KeystoreSentinel
 type KeystoreSentinelSpec struct {
 	// Targets is the list of K8s Objects to watch on the cluster
-	Targets []KeystoreTarget `json:"targets"`
+	Targets KeystoreTarget `json:"target"`
 
 	// Alerts is where the alerts will be sent to
-	Alerts []Alert `json:"alerts"`
+	Alerts Alert `json:"alert"`
 
 	// ScanningInterval is how frequently the controller scans the cluster for these targets - defaults to 30s
 	ScanningInterval int `json:"scanningInterval,omitempty"`
@@ -76,8 +76,8 @@ type KeystoreSentinelStatus struct {
 	DiscoveredKeystores []DiscoveredKeystore `json:"discoveredKeystores"`
 	// KeystoresAtRisk is the slice of CertificateInformation that list the discovered certificates that are about to expire
 	KeystoresAtRisk []KeystoreAtRisk `json:"keystoresAtRisk"`
-	// LastReportsSent is the collection of target alert reports that have been sent out by this Operator controller and when
-	LastReportsSent []LastReportSent `json:"lastReportsSent,omitempty"`
+	// LastReportSent is the time the report has been sent out by this Operator controller and when
+	LastReportSent int64 `json:"lastReportSent,omitempty"`
 }
 
 // DiscoveredKeystore provides the status structure of what keystores have certificates that have been discovered on the cluster

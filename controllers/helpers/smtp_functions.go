@@ -45,13 +45,16 @@ func SendSMTPMail(authType string, username string, password string, identity st
 		server.Authentication = mail.AuthCRAMMD5
 		server.Username = username
 		server.Password = cramSecret
+	case "login":
+		server.Authentication = mail.AuthLogin
+		server.Username = username
+		server.Password = password
 	case "plain":
 		server.Authentication = mail.AuthPlain
 		server.Username = username
 		server.Password = password
-	case "login":
 	default:
-		server.Authentication = mail.AuthLogin
+		server.Authentication = mail.AuthPlain
 		server.Username = username
 		server.Password = password
 	}

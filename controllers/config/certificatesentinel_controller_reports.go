@@ -33,91 +33,50 @@ import (
 	"time"
 )
 
-// processReports processes reports for the alerts
-func processReports(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger, clnt client.Client) []configv1.LastReportSent {
+func processReport(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger, clnt client.Client) int64 {
 	// Set up variables
-	var totalAlerts []string
-	var alreadySentAlerts []string
-	var ReportsSentObject []configv1.LastReportSent
+	var secondsToAdd int64
+	currentUnixTime := time.Now().Unix()
+	lastReportSentTime := defaults.SetDefaultInt64(currentUnixTime, certificateSentinel.Status.LastReportSent)
+	effectiveReportInterval := defaults.SetDefaultString(defaults.ReportInterval, certificateSentinel.Spec.Alert.AlertConfiguration.ReportInterval)
 
-	// Loop through Alerts to get all the names
-	for _, alert := range certificateSentinel.Spec.Alerts {
-		totalAlerts = append(totalAlerts, alert.AlertName)
+	// Find how many seconds we need to add to the current Unix Epoch
+	switch effectiveReportInterval {
+	case "debug":
+		// debug mode cycles every 5 minutes
+		secondsToAdd = 300
+	case "weekly":
+		secondsToAdd = 604800
+	case "monthly":
+		secondsToAdd = 2592000
+	case "daily":
+		secondsToAdd = 86400
+	default:
+		secondsToAdd = 86400
 	}
 
-	// Uncomment in case of emergency
-	//loggerReport := createLoggerReport(certificateSentinel, lggr)
-	//lggr.Info(loggerReport)
-	//smtpReport := createSMTPReport(certificateSentinel, lggr, clnt)
-	//lggr.Info(smtpReport)
+	// Add the times together
+	addedTime := (lastReportSentTime + secondsToAdd)
 
-	// Check the length of the ReportsSent slice
-	if len(certificateSentinel.Status.LastReportsSent) > 0 {
-		// Loop through LastReportsSent, add to alreadySentAlerts
-		for _, report := range certificateSentinel.Status.LastReportsSent {
-			// Check to see if the LastSent date is
-			layout := "2006-01-02 15:04:05 -0700 MST"
-			t, err := time.Parse(layout, report.LastSent)
-			if err != nil {
-				fmt.Printf("Error parsing time! %+v\n", err)
-			}
+	// Next expected time to send is before the current time, overdue to send
+	if (addedTime < time.Now().Unix()) || (lastReportSentTime == currentUnixTime) {
+		LogWithLevel("Dispatching report for "+certificateSentinel.Spec.Alert.AlertName, 2, lggr)
 
-			// Loop through alerts to match the reportInterval - this is lazy, there's probably a better way to map this data out
-			var effectiveReportInterval string
-			for _, alert := range certificateSentinel.Spec.Alerts {
-				if alert.AlertName == report.AlertName {
-					effectiveReportInterval = defaults.SetDefaultString(defaults.ReportInterval, alert.AlertConfiguration.ReportInterval)
-				}
-			}
-			//var effectiveReportIntervalTime time.Time
-			var timeThreshold time.Time
-			switch effectiveReportInterval {
-			case "weekly":
-				timeThreshold = t.AddDate(0, 0, 7)
-			case "monthly":
-				timeThreshold = t.AddDate(0, 1, 0)
-			case "daily":
-			default:
-				timeThreshold = t.AddDate(0, 0, 1)
-			}
-
-			if timeThreshold.Before(time.Now()) {
-				alreadySentAlerts = append(alreadySentAlerts, report.AlertName)
-			}
+		// Send out alert based on alert type
+		switch certificateSentinel.Spec.Alert.AlertType {
+		case "smtp":
+			createSMTPReport(certificateSentinel, lggr, clnt)
+		case "logger":
+			loggr := createLoggerReport(certificateSentinel, lggr)
+			lggr.Info(loggr)
+		default:
+			loggr := createLoggerReport(certificateSentinel, lggr)
+			lggr.Info(loggr)
 		}
+
+		return time.Now().Unix()
 	}
-
-	// Get the list of alerts that need to be sent
-	//if len(totalAlerts) != len(alreadySentAlerts) {
-	alertsToSend := helpers.DifferenceInStringSlices(totalAlerts, alreadySentAlerts)
-
-	for _, alert := range certificateSentinel.Spec.Alerts {
-		if defaults.ContainsString(alertsToSend, alert.AlertName) {
-			lggr.Info("Dispatching report for " + alert.AlertName)
-			// Send out alert based on alert type
-
-			switch alert.AlertType {
-			case "smtp":
-				createSMTPReport(certificateSentinel, lggr, clnt)
-			case "logger":
-			default:
-				lggr.Info(createLoggerReport(certificateSentinel, lggr))
-			}
-
-			lggr.Info("Setting dispatched report in Status.LastReportsSent for " + alert.AlertName)
-			dateSent := time.Now().UTC().String()
-			reportInfo := configv1.LastReportSent{AlertName: alert.AlertName, LastSent: dateSent}
-			ReportsSentObject = append(ReportsSentObject, reportInfo)
-		}
-	}
-	//}
-
-	if len(ReportsSentObject) > 0 {
-		lggr.Info("Sent report for " + fmt.Sprint(len(ReportsSentObject)) + " alerts")
-		return append(ReportsSentObject, certificateSentinel.Status.LastReportsSent...)
-	}
-	lggr.Info("No new reports to send")
-	return certificateSentinel.Status.LastReportsSent
+	return lastReportSentTime
 }
 
 // createLoggerReport loops through CertificateSentinel.Status and creates a stdout report
@@ -132,46 +91,45 @@ func createSMTPReport(certificateSentinel configv1.CertificateSentinel, lggr log
 	htmlEmailReport := createSMTPHTMLReport(certificateSentinel, lggr)
 
 	// Loop through the alerts
-	for _, alert := range certificateSentinel.Spec.Alerts {
-		if alert.AlertType == "smtp" {
-			// Set up basic SMTP vars
-			var username string
-			var password string
-			var identity string
-			var cramSecret string
+	alert := certificateSentinel.Spec.Alert
+	if alert.AlertType == "smtp" {
+		// Set up basic SMTP vars
+		var username string
+		var password string
+		var identity string
+		var cramSecret string
 
-			// Set defaults
-			useTLS := defaults.SetDefaultBool(&defaults.SMTPAuthUseTLS, alert.AlertConfiguration.SMTPAuthUseTLS)
-			useSTARTTLS := defaults.SetDefaultBool(&defaults.SMTPAuthUseSTARTTLS, alert.AlertConfiguration.SMTPAuthUseSTARTTLS)
+		// Set defaults
+		useTLS := defaults.SetDefaultBool(&defaults.SMTPAuthUseSSL, alert.AlertConfiguration.SMTPAuthUseSSL)
+		useSTARTTLS := defaults.SetDefaultBool(&defaults.SMTPAuthUseSTARTTLS, alert.AlertConfiguration.SMTPAuthUseSTARTTLS)
 
-			// Get SMTP Authentication Secret if the AuthType is not `none`
-			smtpAuthSecret := &corev1.Secret{}
-			if alert.AlertConfiguration.SMTPAuthType != "none" {
-				smtpAuthSecret, _ = GetSecret(alert.AlertConfiguration.SMTPAuthSecretName, certificateSentinel.Namespace, clnt)
-			}
-
-			// Assign SMTP Auth vars where needed
-			if len(smtpAuthSecret.Data) > 0 {
-				username = string(smtpAuthSecret.Data["username"])
-				password = string(smtpAuthSecret.Data["password"])
-				identity = string(smtpAuthSecret.Data["identity"])
-				cramSecret = string(smtpAuthSecret.Data["cram"])
-			}
-
-			// Send the message
-			helpers.SendSMTPMail(alert.AlertConfiguration.SMTPAuthType,
-				username,
-				password,
-				identity,
-				cramSecret,
-				useTLS,
-				useSTARTTLS,
-				alert.AlertConfiguration.SMTPDestinationEmailAddresses,
-				alert.AlertConfiguration.SMTPSenderEmailAddress,
-				alert.AlertConfiguration.SMTPEndpoint,
-				textEmailReport,
-				htmlEmailReport)
+		// Get SMTP Authentication Secret if the AuthType is not `none`
+		smtpAuthSecret := &corev1.Secret{}
+		if alert.AlertConfiguration.SMTPAuthType != "none" {
+			smtpAuthSecret, _ = GetSecret(alert.AlertConfiguration.SMTPAuthSecretName, certificateSentinel.Namespace, clnt)
 		}
+
+		// Assign SMTP Auth vars where needed
+		if len(smtpAuthSecret.Data) > 0 {
+			username = string(smtpAuthSecret.Data["username"])
+			password = string(smtpAuthSecret.Data["password"])
+			identity = string(smtpAuthSecret.Data["identity"])
+			cramSecret = string(smtpAuthSecret.Data["cram"])
+		}
+
+		// Send the message
+		helpers.SendSMTPMail(alert.AlertConfiguration.SMTPAuthType,
+			username,
+			password,
+			identity,
+			cramSecret,
+			useTLS,
+			useSTARTTLS,
+			alert.AlertConfiguration.SMTPDestinationEmailAddresses,
+			alert.AlertConfiguration.SMTPSenderEmailAddress,
+			alert.AlertConfiguration.SMTPEndpoint,
+			textEmailReport,
+			htmlEmailReport)
 	}
 
 	return textEmailReport
@@ -190,6 +148,7 @@ func createTextTableReport(certificateSentinel configv1.CertificateSentinel, lgg
 	NamespaceLongest := "Namespace"
 	NameLongest := "Name"
 	DataKeyLongest := "Data Key"
+	CertCNLongest := "Certificate CN"
 	IsCALongest := "Is CA"
 	CACNLongest := "Signing CA CN"
 	ExpirationDateLongest := "Expiration Date"
@@ -203,6 +162,7 @@ func createTextTableReport(certificateSentinel configv1.CertificateSentinel, lgg
 		NamespaceLongest = helpers.ReturnLonger(NamespaceLongest, certInfo.Namespace)
 		NameLongest = helpers.ReturnLonger(NameLongest, certInfo.Name)
 		DataKeyLongest = helpers.ReturnLonger(DataKeyLongest, certInfo.DataKey)
+		CertCNLongest = helpers.ReturnLonger(CertCNLongest, certInfo.CommonName)
 		IsCALongest = helpers.ReturnLonger(IsCALongest, strconv.FormatBool(certInfo.IsCertificateAuthority))
 		CACNLongest = helpers.ReturnLonger(CACNLongest, certInfo.CertificateAuthorityCommonName)
 		ExpirationDateLongest = helpers.ReturnLonger(ExpirationDateLongest, certInfo.Expiration)
@@ -215,11 +175,12 @@ func createTextTableReport(certificateSentinel configv1.CertificateSentinel, lgg
 	NamespaceLength := len(NamespaceLongest)
 	NameLength := len(NameLongest)
 	DataKeyLength := len(DataKeyLongest)
+	CertCNLength := len(CertCNLongest)
 	IsCALength := len(IsCALongest)
 	CACNLength := len(CACNLongest)
 	ExpirationDateLength := len(ExpirationDateLongest)
 	TriggeredDaysOutLength := len(TriggeredDaysOutLongest)
-	TotalLineLength := (APIVersionLength + KindLength + NamespaceLength + NameLength + DataKeyLength + IsCALength + CACNLength + ExpirationDateLength + TriggeredDaysOutLength + 28)
+	TotalLineLength := (APIVersionLength + KindLength + NamespaceLength + NameLength + DataKeyLength + CertCNLength + IsCALength + CACNLength + ExpirationDateLength + TriggeredDaysOutLength + 31)
 	LineBreak := helpers.StrPad("-", TotalLineLength, "-", "BOTH")
 
 	// Loop through the .status.CertificatesAtRisk
@@ -231,6 +192,7 @@ func createTextTableReport(certificateSentinel configv1.CertificateSentinel, lgg
 			Namespace:                      helpers.StrPad(certInfo.Namespace, NamespaceLength, " ", "BOTH"),
 			Name:                           helpers.StrPad(certInfo.Name, NameLength, " ", "BOTH"),
 			Key:                            helpers.StrPad(certInfo.DataKey, DataKeyLength, " ", "BOTH"),
+			CommonName:                     helpers.StrPad(certInfo.CommonName, CertCNLength, " ", "BOTH"),
 			IsCA:                           helpers.StrPad(strconv.FormatBool(certInfo.IsCertificateAuthority), IsCALength, " ", "BOTH"),
 			CertificateAuthorityCommonName: helpers.StrPad(certInfo.CertificateAuthorityCommonName, CACNLength, " ", "BOTH"),
 			ExpirationDate:                 helpers.StrPad(certInfo.Expiration, ExpirationDateLength, " ", "BOTH"),
@@ -239,11 +201,11 @@ func createTextTableReport(certificateSentinel configv1.CertificateSentinel, lgg
 		lineBuf := new(bytes.Buffer)
 		loggerLineTemplate, err := template.New("loggerLine").Parse(LoggerReportLine)
 		if err != nil {
-			lggr.Info("Error parsing loggerLineTemplate template!")
+			lggr.Error(err, "Error parsing loggerLineTemplate template!")
 		}
 		err = loggerLineTemplate.Execute(lineBuf, loggerReportLineStructure)
 		if err != nil {
-			lggr.Info("Error executing loggerLineTemplate template!")
+			lggr.Error(err, "Error executing loggerLineTemplate template!")
 		}
 		// Append to total reportLines
 		reportLines = (reportLines + lineBuf.String())
@@ -256,6 +218,7 @@ func createTextTableReport(certificateSentinel configv1.CertificateSentinel, lgg
 		Namespace:                      helpers.StrPad("Namespace", NamespaceLength, " ", "BOTH"),
 		Name:                           helpers.StrPad("Name", NameLength, " ", "BOTH"),
 		Key:                            helpers.StrPad("Data Key", DataKeyLength, " ", "BOTH"),
+		CommonName:                     helpers.StrPad("Certificate CN", CertCNLength, " ", "BOTH"),
 		IsCA:                           helpers.StrPad("Is CA", IsCALength, " ", "BOTH"),
 		CertificateAuthorityCommonName: helpers.StrPad("Signing CA CN", CACNLength, " ", "BOTH"),
 		ExpirationDate:                 helpers.StrPad("Expiration Date", ExpirationDateLength, " ", "BOTH"),
@@ -264,11 +227,11 @@ func createTextTableReport(certificateSentinel configv1.CertificateSentinel, lgg
 	headerBuf := new(bytes.Buffer)
 	loggerHeaderTemplate, err := template.New("loggerHeader").Parse(LoggerReportHeader)
 	if err != nil {
-		lggr.Info("Error parsing loggerHeaderTemplate template!")
+		lggr.Error(err, "Error parsing loggerHeaderTemplate template!", 1, lggr)
 	}
 	err = loggerHeaderTemplate.Execute(headerBuf, loggerReportHeaderStructure)
 	if err != nil {
-		lggr.Info("Error executing loggerHeaderTemplate template!")
+		lggr.Error(err, "Error executing loggerHeaderTemplate template!")
 	}
 
 	// Set up Logger Report
@@ -332,6 +295,7 @@ func createSMTPHTMLReport(certificateSentinel configv1.CertificateSentinel, lggr
 			Namespace:                      certInfo.Namespace,
 			Name:                           certInfo.Name,
 			Key:                            certInfo.DataKey,
+			CommonName:                     certInfo.CommonName,
 			IsCA:                           strconv.FormatBool(certInfo.IsCertificateAuthority),
 			CertificateAuthorityCommonName: certInfo.CertificateAuthorityCommonName,
 			ExpirationDate:                 string(t.Format(time.RFC822Z)),
@@ -342,11 +306,11 @@ func createSMTPHTMLReport(certificateSentinel configv1.CertificateSentinel, lggr
 		lineBuf := new(bytes.Buffer)
 		htmlLineTemplate, err := template.New("tableLine").Parse(HTMLSMTPReportLine)
 		if err != nil {
-			lggr.Info("Error parsing htmlSMTPReportLine template!")
+			lggr.Error(err, "Error parsing htmlSMTPReportLine template!")
 		}
 		err = htmlLineTemplate.Execute(lineBuf, htmlSMTPReportLine)
 		if err != nil {
-			lggr.Info("Error executing htmlSMTPReportLine template!")
+			lggr.Error(err, "Error executing htmlSMTPReportLine template!")
 		}
 		// Append to total reportLines
 		reportLines = (reportLines + lineBuf.String())
@@ -363,6 +327,7 @@ func createSMTPHTMLReport(certificateSentinel configv1.CertificateSentinel, lggr
 		Namespace:                      "Namespace",
 		Name:                           "Name",
 		Key:                            "Data Key",
+		CommonName:                     "Certificate CN",
 		IsCA:                           "Is CA",
 		CertificateAuthorityCommonName: "Signing CA CN",
 		ExpirationDate:                 "Expiration Date",
@@ -373,11 +338,11 @@ func createSMTPHTMLReport(certificateSentinel configv1.CertificateSentinel, lggr
 	headerBuf := new(bytes.Buffer)
 	tableHeaderTemplate, err := template.New("tableHeader").Parse(HTMLSMTPReportHeader)
 	if err != nil {
-		lggr.Info("Error parsing tableHeaderTemplate template!")
+		lggr.Error(err, "Error parsing tableHeaderTemplate template!")
 	}
 	err = tableHeaderTemplate.Execute(headerBuf, htmlReportHeaderStructure)
 	if err != nil {
-		lggr.Info("Error executing tableHeaderTemplate template!")
+		lggr.Error(err, "Error executing tableHeaderTemplate template!")
 	}
 
 	// Set up HTML Report

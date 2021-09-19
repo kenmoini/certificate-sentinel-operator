@@ -25,17 +25,18 @@ func DecodeCertificateBytes(s []byte, lggr logr.Logger) ([]*x509.Certificate, er
 	// Parse the Certificate
 	certs, err := x509.ParseCertificates(block.Bytes)
 	if err != nil {
-		lggr.Info("Failed to decode certificate!")
-		fmt.Printf("Failed to decode certificate %v\n", err)
+		lggr.Error(err, "Failed to decode certificate!")
 		return nil, err
 	}
 	return certs, nil
 }
 
 // ParseCertificatesIntoLists takes a slice of certificates and all the other supporting information to create a CertificateInformation return to add to .status/alert report
-func ParseCertificatesIntoLists(certs []*x509.Certificate, timeOut []configv1.TimeSlice, namespace string, name string, dataKey string, kind string, apiVersion string, lggr logr.Logger) (discovered []configv1.CertificateInformation, expired []configv1.CertificateInformation) {
+func ParseCertificatesIntoLists(certs []*x509.Certificate, timeOut []configv1.TimeSlice, namespace string, name string, dataKey string, kind string, apiVersion string) (discovered []configv1.CertificateInformation, expired []configv1.CertificateInformation, messages []string) {
 	discoveredL := []configv1.CertificateInformation{}
 	expiredL := []configv1.CertificateInformation{}
+	var messagesL []string
+
 	// Loop over parsed certificates
 	for _, cert := range certs {
 		var triggeredDaysOut []int
@@ -44,17 +45,17 @@ func ParseCertificatesIntoLists(certs []*x509.Certificate, timeOut []configv1.Ti
 		for _, d := range timeOut {
 			utcTime := d.Time.UTC()
 			if utcTime.After(expirationDate) {
-				lggr.Info("Certificate will expire in less than " + fmt.Sprint(d.DaysOut) + " days! Date: " + expirationDate.String())
+				messagesL = append(messagesL, "Certificate will expire in less than "+fmt.Sprint(d.DaysOut)+" days! Date: "+expirationDate.String())
 				triggeredDaysOut = append(triggeredDaysOut, d.DaysOut)
 			}
 		}
 		// Create CertificateInformation object
-		certInfo := configv1.CertificateInformation{Namespace: namespace, Name: name, DataKey: dataKey, Kind: kind, APIVersion: apiVersion, Expiration: expirationDate.String(), CertificateAuthorityCommonName: cert.Issuer.CommonName, IsCertificateAuthority: cert.IsCA, TriggeredDaysOut: triggeredDaysOut}
+		certInfo := configv1.CertificateInformation{Namespace: namespace, Name: name, DataKey: dataKey, Kind: kind, APIVersion: apiVersion, Expiration: expirationDate.String(), CommonName: cert.Subject.CommonName, CertificateAuthorityCommonName: cert.Issuer.CommonName, IsCertificateAuthority: cert.IsCA, TriggeredDaysOut: triggeredDaysOut}
 		// This certificate is not expired
 		discoveredL = append(discoveredL, certInfo)
 		if len(triggeredDaysOut) != 0 {
 			expiredL = append(expiredL, certInfo)
 		}
 	}
-	return discoveredL, expiredL
+	return discoveredL, expiredL, messagesL
 }

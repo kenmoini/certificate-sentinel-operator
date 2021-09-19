@@ -81,3 +81,13 @@ func DifferenceInStringSlices(slice1 []string, slice2 []string) []string {
 
 	return diff
 }
+
+// RemoveStringFromSlice takes a slice and finds a string then returns a new slice without it
+func RemoveStringFromSlice(r string, s []string) []string {
+	for i, v := range s {
+		if v == r {
+			return append(s[:i], s[i+1:]...)
+		}
+	}
+	return s
+}

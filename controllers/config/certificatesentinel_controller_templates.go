@@ -36,10 +36,10 @@ CertificateSentinel Report: {{ .Namespace }}/{{ .Name }} ({{ .DateSent }})
 {{ .Divider }}
 `
 
-const LoggerReportLine = `| {{ .APIVersion }} | {{ .Kind }} | {{ .Namespace }} | {{ .Name }} | {{ .Key }} | {{ .CertificateAuthorityCommonName }} | {{ .IsCA }} | {{ .ExpirationDate }} | {{ .TriggeredDaysOut }} |
+const LoggerReportLine = `| {{ .APIVersion }} | {{ .Kind }} | {{ .Namespace }} | {{ .Name }} | {{ .Key }} | {{ .CommonName }} | {{ .IsCA }} | {{ .CertificateAuthorityCommonName }} | {{ .ExpirationDate }} | {{ .TriggeredDaysOut }} |
 `
 
-const LoggerReportHeader = `| {{ .APIVersion }} | {{ .Kind }} | {{ .Namespace }} | {{ .Name }} | {{ .Key }} | {{ .CertificateAuthorityCommonName }} | {{ .IsCA }} | {{ .ExpirationDate }} | {{ .TriggeredDaysOut }} |`
+const LoggerReportHeader = `| {{ .APIVersion }} | {{ .Kind }} | {{ .Namespace }} | {{ .Name }} | {{ .Key }} | {{ .CommonName }} | {{ .IsCA }} | {{ .CertificateAuthorityCommonName }} | {{ .ExpirationDate }} | {{ .TriggeredDaysOut }} |`
 
 // loggerReportStructure provides the overall structure to the loggerReport template
 type LoggerReportStructure struct {
@@ -62,6 +62,7 @@ type LoggerReportHeaderStructure struct {
 	Namespace                      string
 	Name                           string
 	Key                            string
+	CommonName                     string
 	IsCA                           string
 	CertificateAuthorityCommonName string
 	ExpirationDate                 string
@@ -75,6 +76,7 @@ type LoggerReportLineStructure struct {
 	Namespace                      string
 	Name                           string
 	Key                            string
+	CommonName                     string
 	IsCA                           string
 	CertificateAuthorityCommonName string
 	ExpirationDate                 string
@@ -130,9 +132,9 @@ const HTMLSMTPReportBody = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transit
 const HTMLSMTPReportBodyDivider = `<div style="width:100%;"><hr /></div>`
 const HTMLSMTPReportBodyTableDivider = `<tr><td style="text-align:left">&nbsp;</td></tr>`
 
-const HTMLSMTPReportLine = `<tr style="{{ .RowStyles }}"><td style="{{ .CellStyles }}">{{ .APIVersion }}</td><td style="{{ .CellStyles }}">{{ .Kind }}</td><td style="{{ .CellStyles }}">{{ .Namespace }}</td><td style="{{ .CellStyles }}">{{ .Name }}</td><td style="{{ .CellStyles }}">{{ .Key }}</td><td style="{{ .CellStyles }}">{{ .CertificateAuthorityCommonName }}</td><td style="{{ .CellStyles }}">{{ .IsCA }}</td><td style="{{ .CellStyles }}">{{ .ExpirationDate }}</td><td style="{{ .CellStyles }}">{{ .TriggeredDaysOut }}</td></tr>`
+const HTMLSMTPReportLine = `<tr style="{{ .RowStyles }}"><td style="{{ .CellStyles }}">{{ .APIVersion }}</td><td style="{{ .CellStyles }}">{{ .Kind }}</td><td style="{{ .CellStyles }}">{{ .Namespace }}</td><td style="{{ .CellStyles }}">{{ .Name }}</td><td style="{{ .CellStyles }}">{{ .Key }}</td><td style="{{ .CellStyles }}">{{ .CommonName }}</td><td style="{{ .CellStyles }}">{{ .IsCA }}</td><td style="{{ .CellStyles }}">{{ .CertificateAuthorityCommonName }}</td><td style="{{ .CellStyles }}">{{ .ExpirationDate }}</td><td style="{{ .CellStyles }}">{{ .TriggeredDaysOut }}</td></tr>`
 
-const HTMLSMTPReportHeader = `<tr style="background:#EEE;"><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .APIVersion }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .Kind }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .Namespace }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .Name }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .Key }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .CertificateAuthorityCommonName }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .IsCA }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .ExpirationDate }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .TriggeredDaysOut }}</td></tr>`
+const HTMLSMTPReportHeader = `<tr style="background:#EEE;"><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .APIVersion }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .Kind }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .Namespace }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .Name }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .Key }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .CommonName }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .IsCA }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .CertificateAuthorityCommonName }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .ExpirationDate }}</td><td style="{{ .CellStyles }}border-bottom:1px solid #999;border-top:1px solid #999;">{{ .TriggeredDaysOut }}</td></tr>`
 
 // TextSMTPReportStructure is just a wrapper for the text-report in an HTML document
 type TextSMTPReportStructure struct {
@@ -160,6 +162,7 @@ type HTMLReportLineStructure struct {
 	Namespace                      string
 	Name                           string
 	Key                            string
+	CommonName                     string
 	IsCA                           string
 	CertificateAuthorityCommonName string
 	ExpirationDate                 string
@@ -175,6 +178,7 @@ type HTMLReportHeaderStructure struct {
 	Namespace                      string
 	Name                           string
 	Key                            string
+	CommonName                     string
 	IsCA                           string
 	CertificateAuthorityCommonName string
 	ExpirationDate                 string

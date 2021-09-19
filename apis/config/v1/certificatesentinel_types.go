@@ -22,18 +22,21 @@ import (
 
 // CertificateSentinelSpec defines the desired state of CertificateSentinel
 type CertificateSentinelSpec struct {
-	// Targets is the slice of K8s Objects to watch on the cluster and with what ServiceAccount
-	Targets []Targets `json:"targets"`
+	// Targets is the definition of K8s Objects to watch on the cluster and with what ServiceAccount
+	Target Target `json:"target"`
 
 	// Alerts is where the alerts will be sent to
-	Alerts []Alert `json:"alerts"`
+	Alert Alert `json:"alert"`
 
-	// ScanningInterval is how frequently the controller scans the cluster for these targets - defaults to 30s
+	// ScanningInterval is how frequently the controller scans the cluster for these targets - defaults to 60s
 	ScanningInterval int `json:"scanningInterval,omitempty"`
+
+	// LogLevel controls the verbosity of the  - defaults to 1
+	LogLevel int `json:"logLevel,omitempty"`
 }
 
-// Targets provide what sort of objects we're watching for, be that a ConfigMap or a Secret
-type Targets struct {
+// Target provide what sort of objects we're watching for, be that a ConfigMap or a Secret
+type Target struct {
 	// TargetName is a simple DNS/k8s compliant name for identification purposes
 	TargetName string `json:"name"`
 	// Namespaces is the slice of namespaces to watch on the cluster - can be a single wildcard to watch all namespaces
@@ -62,7 +65,7 @@ type Alert struct {
 
 // AlertConfiguration provides the structure of the AlertConfigurations for different Alert Endpoints
 type AlertConfiguration struct {
-	// ReportInterval is the frequency in which Reports would be sent out - can be `daily`, `weekly`, or `monthly`.  Defaults to daily.
+	// ReportInterval is the frequency in which Reports would be sent out - can be `daily`, `weekly`, `monthly`, or `debug` which is every 5 minutes.  Defaults to daily.
 	ReportInterval string `json:"reportInterval,omitempty"`
 	// SMTPDestinationEmailAddresses is where the alert messages will be sent TO
 	SMTPDestinationEmailAddresses []string `json:"smtp_destination_addresses,omitempty"`
@@ -76,8 +79,8 @@ type AlertConfiguration struct {
 	SMTPAuthSecretName string `json:"smtp_auth_secret,omitempty"`
 	// SMTPAuthType can be either `none`, `plain`, `login`, or `cram-md5`
 	SMTPAuthType string `json:"smtp_auth_type,omitempty"`
-	// SMTPAuthUseTLS can be used to set the use of TLS, default is true
-	SMTPAuthUseTLS *bool `json:"smtp_use_tls,omitempty"`
+	// SMTPAuthUseSSL can be used to set the use of TLS, default is true
+	SMTPAuthUseSSL *bool `json:"smtp_use_ssl,omitempty"`
 	// SMTPAuthUseSTARTTLS can be used to set the use of STARTTLS, default is true
 	SMTPAuthUseSTARTTLS *bool `json:"smtp_use_starttls,omitempty"`
 	// Moved to K8s Secret
@@ -93,15 +96,17 @@ type CertificateSentinelStatus struct {
 	DiscoveredCertificates []CertificateInformation `json:"discoveredCertificates"`
 	// CertificatesAtRisk is the slice of CertificateInformation that list the discovered certificates that are about to expire
 	CertificatesAtRisk []CertificateInformation `json:"certificatesAtRisk"`
-	// ReportsSent is the collection of target alert reports that have been sent out by this Operator and when
-	LastReportsSent []LastReportSent `json:"lastReportsSent,omitempty"`
+	// LastReportSent is definition of the report that have been sent out by this Operator and when
+	LastReportSent int64 `json:"lastReportSent,omitempty"`
 }
 
+/*
 // LastReportSent composes the information around when reports were last sent for which Alert
 type LastReportSent struct {
 	AlertName string `json:"alertName"`
-	LastSent  string `json:"lastSent"`
+	LastSent  int64  `json:"lastSent"`
 }
+*/
 
 // CertificateInformation provides the status structure of what certificates have been discovered on the cluster
 type CertificateInformation struct {
@@ -117,6 +122,8 @@ type CertificateInformation struct {
 	DataKey string `json:"dataKey"`
 	// Expiration is the expiration date in YYYY-MM-DD
 	Expiration string `json:"expiration"`
+	// Name provides the name of the certificate object
+	CommonName string `json:"commonName"`
 	// CertificateAuthorityCommonName provides the Common Name of the signing Certificate Authority
 	CertificateAuthorityCommonName string `json:"certificateAuthorityCommonName"`
 	// IsCertificateAuthority returns a bool if the certificate is a CA
