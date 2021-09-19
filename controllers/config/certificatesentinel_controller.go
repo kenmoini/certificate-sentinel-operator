@@ -252,12 +252,13 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	// Loop through the namespaces in scope for this target
 	for _, el := range effectiveNamespaces {
+		targetListOptions := &client.ListOptions{Namespace: el, LabelSelector: targetLabelSelector}
 		switch targetKind {
 		//=========================== SECRETS
 		case "Secret":
 			// Get a list of Secrets in this Namespace
 			secretList := &corev1.SecretList{}
-			err = cl.List(context.Background(), secretList, client.InNamespace(el))
+			err = cl.List(context.Background(), secretList, targetListOptions)
 			if err != nil {
 				lggr.Error(err, "Failed to list secrets in namespace/"+el)
 			}
@@ -328,7 +329,7 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 			LogWithLevel("Checking for access to ConfigMap in ns/"+el, 3, lggr)
 			// Get the list of ConfigMaps in this namespace
 			configMapList := &corev1.ConfigMapList{}
-			err = cl.List(context.Background(), configMapList, client.InNamespace(el))
+			err = cl.List(context.Background(), configMapList, targetListOptions)
 			if err != nil {
 				lggr.Error(err, "Failed to list ConfigMaps in ns/"+el)
 			}
