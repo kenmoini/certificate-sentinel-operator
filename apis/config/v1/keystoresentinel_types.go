@@ -79,26 +79,27 @@ type SecretReference struct {
 type KeystoreSentinelStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	DiscoveredKeystores []DiscoveredKeystore `json:"discoveredKeystores"`
-	// KeystoresAtRisk is the slice of CertificateInformation that list the discovered certificates that are about to expire
-	KeystoresAtRisk []KeystoreAtRisk `json:"keystoresAtRisk"`
+	DiscoveredKeystores []KeystoreInformation `json:"discoveredKeystores"`
+	// KeystoresAtRisk is the number of Keystores that have expiring certificates
+	KeystoresAtRisk int64 `json:"keystoresAtRisk,omitempty"`
 	// LastReportSent is the time the report has been sent out by this Operator controller and when
 	LastReportSent int64 `json:"lastReportSent,omitempty"`
 }
 
-// DiscoveredKeystore provides the status structure of what keystores have certificates that have been discovered on the cluster
-type DiscoveredKeystore struct {
+// KeystoreInformation provides the status structure of what keystores have certificates that have been discovered on the cluster
+type KeystoreInformation struct {
+	// Namespace provides what namespace the Keystore object was found in
 	Namespace string `json:"namespace"`
-	Name      string `json:"name"`
-	Kind      string `json:"kind"`
-}
-
-// KeystoreAtRisk provides the status structure of what keystores have certificates that are about to expire and from what CA
-type KeystoreAtRisk struct {
-	Namespace  string `json:"namespace"`
-	Name       string `json:"name"`
-	Kind       string `json:"kind"`
-	Expiration string `json:"expiration"`
+	// Name provides the name of the Keystore object
+	Name string `json:"name"`
+	// Kind provides the kind of the Keystore object
+	Kind string `json:"kind"`
+	// APIVersion corresponds to the target kind apiVersion, so v1 is all really
+	APIVersion string `json:"apiVersion"`
+	// DataKey is the key for the data structure found
+	DataKey string `json:"dataKey"`
+	// TriggeredDaysOut provides the slice of days out that triggered the watch
+	TriggeredDaysOut []int `json:"triggeredDaysOut,omitempty"`
 }
 
 //+kubebuilder:object:root=true

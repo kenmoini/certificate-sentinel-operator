@@ -35,9 +35,8 @@ func DecodeCertificateBytes(s []byte, lggr logr.Logger) ([]*x509.Certificate, er
 }
 
 // ParseCertificateIntoObjects takes a slice of certificates and all the other supporting information to create a CertificateInformation return to add to .status/alert report
-func ParseCertificateIntoObjects(cert *x509.Certificate, timeOut []configv1.TimeSlice, namespace string, name string, dataKey string, kind string, apiVersion string) (discovered []configv1.CertificateInformation, expired []configv1.CertificateInformation, messages []string) {
+func ParseCertificateIntoObjects(cert *x509.Certificate, timeOut []configv1.TimeSlice, namespace string, name string, dataKey string, kind string, apiVersion string) (discovered []configv1.CertificateInformation, messages []string) {
 	discoveredL := []configv1.CertificateInformation{}
-	expiredL := []configv1.CertificateInformation{}
 	var messagesL []string
 
 	var triggeredDaysOut []int
@@ -57,11 +56,8 @@ func ParseCertificateIntoObjects(cert *x509.Certificate, timeOut []configv1.Time
 	// This certificate is not expired
 	discoveredL = append(discoveredL, certInfo)
 	// If this certificate triggered any alerted daysOut, it is at risk of expiring
-	if len(triggeredDaysOut) != 0 {
-		expiredL = append(expiredL, certInfo)
-	}
 
-	return discoveredL, expiredL, messagesL
+	return discoveredL, messagesL
 }
 
 // ParseCertificatesIntoLists takes a slice of certificates and all the other supporting information to create a CertificateInformation return to add to .status/alert report

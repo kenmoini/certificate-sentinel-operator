@@ -18,14 +18,10 @@ package config
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/rest"
 	"reflect"
 	"strconv"
@@ -35,7 +31,6 @@ import (
 	//"k8s.io/api"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -131,49 +126,22 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 	scanningInterval := defaults.SetDefaultInt(defaults.ScanningInterval, certificateSentinel.Spec.ScanningInterval)
 	targetName := certificateSentinel.Spec.Target.TargetName
 
-	targetNamespaceLabels := certificateSentinel.Spec.Target.NamespaceLabels
-	targetNamespaceLabelSelector := labels.NewSelector()
-
 	serviceAccount := certificateSentinel.Spec.Target.ServiceAccount
 	targetKind := certificateSentinel.Spec.Target.Kind
 	targetAPIVersion := certificateSentinel.Spec.Target.APIVersion
 	targetDaysOut := certificateSentinel.Spec.Target.DaysOut
-	timeOut := daysOutToTimeOut(targetDaysOut)
+	timeOut := DaysOutToTimeOut(targetDaysOut)
 
 	targetLabels := certificateSentinel.Spec.Target.TargetLabels
-	targetLabelSelector := labels.NewSelector()
+	targetNamespaceLabels := certificateSentinel.Spec.Target.NamespaceLabels
 
-	effectiveNamespaces := []string{}
+	targetLabelSelector, targetNamespaceLabelSelector := SetupLabelSelectors(targetLabels, targetNamespaceLabels, LggrK)
+
+	//effectiveNamespaces := []string{}
 	CertHashList := []string{}
 	expiredCertificateCount := 0
 
 	LogWithLevel("Processing CertificateSentinel target: "+targetName, 2, lggr)
-
-	// Create the label selectors for the target label filter
-	if len(targetLabels) > 0 {
-		// Loop through label filters
-		for _, label := range targetLabels {
-			activeFilter := returnFilterType(label.Filter)
-			req, err := labels.NewRequirement(label.Key, activeFilter, label.Values)
-			if err != nil {
-				lggr.Error(err, "Failed to build labelSelector requirement for target!")
-			}
-			targetLabelSelector = targetLabelSelector.Add(*req)
-		}
-	}
-
-	// Create the label selectors for the namespace label filter
-	if len(targetNamespaceLabels) > 0 {
-		// Loop through label filters
-		for _, label := range targetNamespaceLabels {
-			activeFilter := returnFilterType(label.Filter)
-			req, err := labels.NewRequirement(label.Key, activeFilter, label.Values)
-			if err != nil {
-				lggr.Error(err, "Failed to build labelSelector requirement for namespace!")
-			}
-			targetNamespaceLabelSelector = targetNamespaceLabelSelector.Add(*req)
-		}
-	}
 
 	// Get ServiceAccount
 	LogWithLevel("Using ServiceAccount: "+serviceAccount, 2, lggr)
@@ -219,36 +187,40 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
-	// Loop through target namespaces
-	for _, elem := range certificateSentinel.Spec.Target.Namespaces {
-		namespaceList := &corev1.NamespaceList{}
-		ns := strings.TrimSpace(elem)
-		activeNamespace := ns
-		activeNamespaceDisplayName := ns
+	/*
+		// Loop through target namespaces
+		for _, elem := range certificateSentinel.Spec.Target.Namespaces {
+			namespaceList := &corev1.NamespaceList{}
+			ns := strings.TrimSpace(elem)
+			activeNamespace := ns
+			activeNamespaceDisplayName := ns
 
-		if ns == "*" {
-			activeNamespace = ""
-			activeNamespaceDisplayName = "*"
-		}
+			if ns == "*" {
+				activeNamespace = ""
+				activeNamespaceDisplayName = "*"
+			}
 
-		LogWithLevel("Querying for namespace/"+activeNamespaceDisplayName+" with sa/"+serviceAccount, 3, lggr)
-		// Get Namespace with the cached context
-		namespaceListOptions := &client.ListOptions{Namespace: activeNamespace, LabelSelector: targetNamespaceLabelSelector}
-		err = cl.List(context.Background(), namespaceList, namespaceListOptions)
-		if err != nil {
-			lggr.Error(err, "Failed to list namespace in cluster!")
-			lggr.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
-			time.Sleep(time.Second * time.Duration(scanningInterval))
-			return ctrl.Result{}, err
-		}
-		// Loop through NamespaceList, create the effectiveNamespaces slice
-		for _, el := range namespaceList.Items {
-			if !defaults.ContainsString(effectiveNamespaces, el.Name) {
-				LogWithLevel("Adding ns/"+el.Name+" to scope", 3, lggr)
-				effectiveNamespaces = append(effectiveNamespaces, el.Name)
+			LogWithLevel("Querying for namespace/"+activeNamespaceDisplayName+" with sa/"+serviceAccount, 3, lggr)
+			// Get Namespace with the cached context
+			namespaceListOptions := &client.ListOptions{Namespace: activeNamespace, LabelSelector: targetNamespaceLabelSelector}
+			err = cl.List(context.Background(), namespaceList, namespaceListOptions)
+			if err != nil {
+				lggr.Error(err, "Failed to list namespace in cluster!")
+				lggr.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
+				time.Sleep(time.Second * time.Duration(scanningInterval))
+				return ctrl.Result{}, err
+			}
+			// Loop through NamespaceList, create the effectiveNamespaces slice
+			for _, el := range namespaceList.Items {
+				if !defaults.ContainsString(effectiveNamespaces, el.Name) {
+					LogWithLevel("Adding ns/"+el.Name+" to scope", 3, lggr)
+					effectiveNamespaces = append(effectiveNamespaces, el.Name)
+				}
 			}
 		}
-	}
+	*/
+
+	effectiveNamespaces, _ := SetupNamespaceSlice(certificateSentinel.Spec.Target.Namespaces, cl, lggr, serviceAccount, targetNamespaceLabelSelector, scanningInterval)
 
 	// Loop through the namespaces in scope for this target
 	for _, el := range effectiveNamespaces {
@@ -284,14 +256,7 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 							// Loop through the current collection of certificates
 							for _, cert := range certs {
 								// Check to see if this has already been added
-
-								// Hash the Certificate and add it to the string slice
-								h := sha1.New()
-								//h.Write(cert.Raw)
-								byteStream := []byte(targetKind + "-" + el + "-" + e.Name + "-" + cert.Subject.CommonName + "-" + cert.Issuer.CommonName)
-								//h.Write(byteStream)
-								h.Write(append(byteStream, cert.Raw...))
-								sha_str := hex.EncodeToString(h.Sum(nil))
+								sha_str := createUniqueCertificateChecksum(targetKind+"-"+el+"-"+e.Name+"-"+cert.Subject.CommonName+"-"+cert.Issuer.CommonName, cert)
 
 								if defaults.ContainsString(CertHashList, sha_str) {
 									// Skipping Certificate
@@ -301,7 +266,7 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 									LogWithLevel("Adding "+sha_str, 3, lggr)
 									CertHashList = append(CertHashList, sha_str)
 
-									discovered, _, messages := helpers.ParseCertificateIntoObjects(cert, timeOut, el, e.Name, k, targetKind, targetAPIVersion)
+									discovered, messages := helpers.ParseCertificateIntoObjects(cert, timeOut, el, e.Name, k, targetKind, targetAPIVersion)
 									// Loop through passed messages for log level 3
 									for _, m := range messages {
 										LogWithLevel(m, 3, lggr)
@@ -349,13 +314,7 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 						// Loop through the current collection of certificates
 						for _, cert := range certs {
 							// Check to see if this has already been added
-
-							// Hash the Certificate and add it to the string slice
-							h := sha1.New()
-							byteStream := []byte(targetKind + "-" + el + "-" + e.Name + "-" + cert.Subject.CommonName + "-" + cert.Issuer.CommonName)
-							//h.Write(byteStream)
-							h.Write(append(byteStream, cert.Raw...))
-							sha_str := hex.EncodeToString(h.Sum(nil))
+							sha_str := createUniqueCertificateChecksum(targetKind+"-"+el+"-"+e.Name+"-"+cert.Subject.CommonName+"-"+cert.Issuer.CommonName, cert)
 
 							if defaults.ContainsString(CertHashList, sha_str) {
 								// Skipping Certificate
@@ -365,7 +324,7 @@ func (r *CertificateSentinelReconciler) Reconcile(ctx context.Context, req ctrl.
 								LogWithLevel("Adding "+sha_str, 3, lggr)
 								CertHashList = append(CertHashList, sha_str)
 
-								discovered, _, messages := helpers.ParseCertificateIntoObjects(cert, timeOut, el, e.Name, k, targetKind, targetAPIVersion)
+								discovered, messages := helpers.ParseCertificateIntoObjects(cert, timeOut, el, e.Name, k, targetKind, targetAPIVersion)
 								// Loop through passed messages for log level 3
 								for _, m := range messages {
 									LogWithLevel(m, 3, lggr)
@@ -449,41 +408,8 @@ func (r *CertificateSentinelReconciler) SetupWithManager(mgr ctrl.Manager) error
 // SCOPED FUNCTIONS
 //===========================================================================================
 
-// returnFilterType just returns whatever string type simple name of label selection operations to that actual type
-func returnFilterType(labelFilter string) selection.Operator {
-	switch labelFilter {
-	case "in":
-		return selection.In
-	case "notIn":
-		return selection.NotIn
-	case "equals":
-		return selection.Equals
-	case "doubleEquals":
-		return selection.DoubleEquals
-	case "notEquals":
-		return selection.NotEquals
-	case "greaterThan":
-		return selection.GreaterThan
-	case "lessThan":
-		return selection.LessThan
-	case "exists":
-		return selection.Exists
-	case "doesNotExist":
-		return selection.DoesNotExist
-	default:
-		return selection.Equals
-	}
-}
-
-// LogWithLevel implements simple log levels
-func LogWithLevel(s string, level int, l logr.Logger) {
-	if SetLogLevel >= level {
-		l.Info(s)
-	}
-}
-
-// daysOutToTimeOut converts an int slice of the number of days out to trigger an expiration alert on into a []configv1.TimeSlice time.Time array of computed date values to compare against certificate expiration dates with time.After
-func daysOutToTimeOut(targetDaysOut []int) []configv1.TimeSlice {
+// DaysOutToTimeOut converts an int slice of the number of days out to trigger an expiration alert on into a []configv1.TimeSlice time.Time array of computed date values to compare against certificate expiration dates with time.After
+func DaysOutToTimeOut(targetDaysOut []int) []configv1.TimeSlice {
 	// Set Active DaysOut and time.Time formatted future dates
 	daysOut := targetDaysOut
 	if len(targetDaysOut) == 0 {
