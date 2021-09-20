@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"github.com/go-logr/logr"
 	configv1 "github.com/kenmoini/certificate-sentinel-operator/apis/config/v1"
-	"reflect"
 )
 
 /*=====================================================================================
@@ -60,7 +59,7 @@ func ParseCertificateIntoObjects(cert *x509.Certificate, timeOut []configv1.Time
 	return discoveredL, messagesL
 }
 
-// ParseCertificatesIntoLists takes a slice of certificates and all the other supporting information to create a CertificateInformation return to add to .status/alert report
+// ParseCertificatesIntoLists [DEPRECIATED] takes a slice of certificates and all the other supporting information to create a CertificateInformation return to add to .status/alert report
 func ParseCertificatesIntoLists(certs []*x509.Certificate, timeOut []configv1.TimeSlice, namespace string, name string, dataKey string, kind string, apiVersion string) (discovered []configv1.CertificateInformation, expired []configv1.CertificateInformation, messages []string) {
 	discoveredL := []configv1.CertificateInformation{}
 	expiredL := []configv1.CertificateInformation{}
@@ -88,9 +87,6 @@ func ParseCertificatesIntoLists(certs []*x509.Certificate, timeOut []configv1.Ti
 		h.Write(cert.Raw)
 		//sha_str := fmt.Sprintf("%x", h.Sum(nil))
 		sha_str := hex.EncodeToString(h.Sum(nil))
-		fmt.Printf("SUM %+s\n", sha_str)
-		fmt.Printf("LEN %+v\n", len(RHashL))
-		fmt.Printf("type %+v\n", reflect.TypeOf(sha_str))
 
 		elFound := false
 		for _, v := range RHashL {
@@ -103,9 +99,7 @@ func ParseCertificatesIntoLists(certs []*x509.Certificate, timeOut []configv1.Ti
 		//if containsString(RHashL, sha_str) {
 		if elFound {
 			// Skipping Certificate
-			fmt.Printf("Already found %+v\n", sha_str)
 		} else {
-			fmt.Printf("Adding %+v\n", sha_str)
 			RHashL = append(RHashL, sha_str)
 
 			// This certificate is not expired

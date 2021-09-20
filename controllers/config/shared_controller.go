@@ -98,6 +98,7 @@ func returnFilterType(labelFilter string) selection.Operator {
 	}
 }
 
+// SetupNamespaceSlice sets up the shared effectiveNamespaces from the provided YAML structures
 func SetupNamespaceSlice(namespaces []string, cl client.Client, lggr logr.Logger, serviceAccount string, targetNamespaceLabelSelector labels.Selector, scanningInterval int) ([]string, error) {
 
 	var effectiveNamespaces []string
@@ -136,6 +137,7 @@ func SetupNamespaceSlice(namespaces []string, cl client.Client, lggr logr.Logger
 	return effectiveNamespaces, nil
 }
 
+// createUniqueCertificateChecksum takes a seedString and a certificate byte stream and creates a unique SHA1 hash to track
 func createUniqueCertificateChecksum(seedString string, cert *x509.Certificate) string {
 	// Hash the Certificate and add it to the string slice
 	h := sha1.New()
@@ -144,4 +146,11 @@ func createUniqueCertificateChecksum(seedString string, cert *x509.Certificate) 
 	h.Write(append(byteStream, cert.Raw...))
 
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// zeroing allows sensitive data to be removed from memory as soon as the use of them is complete via defered function calls
+func zeroing(s []byte) {
+	for i := 0; i < len(s); i++ {
+		s[i] = 0
+	}
 }

@@ -19,6 +19,7 @@ package config
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	corev1 "k8s.io/api/core/v1"
@@ -28,7 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	//"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	configv1 "github.com/kenmoini/certificate-sentinel-operator/apis/config/v1"
@@ -61,7 +62,7 @@ var SetLogLevelK int
 // init is fired when this controller is started
 func init() {
 	// Set logging
-	log.SetLogger(zap.New())
+	//log.SetLogger(zap.New())
 }
 
 //===========================================================================================
@@ -137,7 +138,7 @@ func (r *KeystoreSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	LogWithLevel("Processing KeystoreSentinel target: "+targetName, 2, LggrK)
 
 	// Get ServiceAccount
-	LogWithLevel("Using ServiceAccount: "+serviceAccount, 2, lggr)
+	LogWithLevel("Using ServiceAccount: "+serviceAccount, 2, LggrK)
 	targetServiceAccount, _ := GetServiceAccount(serviceAccount, keystoreSentinel.Namespace, r.Client)
 	var serviceAccountSecretName string
 	targetServiceAccountSecret := &corev1.Secret{}
@@ -148,15 +149,15 @@ func (r *KeystoreSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if secret.Type == "kubernetes.io/service-account-token" {
 			// Get Secret
 			serviceAccountSecretName = em.Name
-			LogWithLevel("Using Secret: "+serviceAccountSecretName, 2, lggr)
+			LogWithLevel("Using Secret: "+serviceAccountSecretName, 2, LggrK)
 			targetServiceAccountSecret, _ = GetSecret(serviceAccountSecretName, keystoreSentinel.Namespace, r.Client)
 		}
 	}
 
 	// We didn't find a Secret to work against the API and thus can't create a new client
 	if serviceAccountSecretName == "" {
-		lggr.Error(err, "Failed to find API Token type Secret in ServiceAccount!")
-		lggr.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
+		LggrK.Error(err, "Failed to find API Token type Secret in ServiceAccount!")
+		LggrK.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
 		time.Sleep(time.Second * time.Duration(scanningInterval))
 		return ctrl.Result{}, err
 	}
@@ -174,13 +175,13 @@ func (r *KeystoreSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// Set up new Client
 	cl, err := client.New(newConfig, client.Options{})
 	if err != nil {
-		lggr.Error(err, "Failed to create client")
-		lggr.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
+		LggrK.Error(err, "Failed to create client")
+		LggrK.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
 		time.Sleep(time.Second * time.Duration(scanningInterval))
 		return ctrl.Result{}, err
 	}
 
-	effectiveNamespaces, _ := SetupNamespaceSlice(keystoreSentinel.Spec.Target.Namespaces, cl, lggr, serviceAccount, targetNamespaceLabelSelector, scanningInterval)
+	effectiveNamespaces, _ := SetupNamespaceSlice(keystoreSentinel.Spec.Target.Namespaces, cl, LggrK, serviceAccount, targetNamespaceLabelSelector, scanningInterval)
 
 	// Loop through the namespaces in scope for this target
 	for _, el := range effectiveNamespaces {
@@ -192,23 +193,50 @@ func (r *KeystoreSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			secretList := &corev1.SecretList{}
 			err = cl.List(context.Background(), secretList, targetListOptions)
 			if err != nil {
-				lggr.Error(err, "Failed to list secrets in namespace/"+el)
+				LggrK.Error(err, "Failed to list secrets in namespace/"+el)
 			}
 
 			// Loop through Secrets
 			for _, e := range secretList.Items {
 				secretType := string(e.Type)
 				if secretType == string(corev1.SecretTypeOpaque) || secretType == string(corev1.SecretTypeTLS) {
-					LogWithLevel("Getting secret/"+e.Name+" in namespace/"+el+" (type="+secretType+")", 3, lggr)
+					LogWithLevel("Getting secret/"+e.Name+" in namespace/"+el+" (type="+secretType+")", 3, LggrK)
 
 					secretItem, _ := GetSecret(string(e.Name), el, cl)
 
 					// Get the actual secret data
 					for k, s := range secretItem.Data {
 						// Store the secret as a base64 decoded string from the byte slice
-						sDataStr := string(s)
+						//sDataStr := string(s)
 
-						LogWithLevel(k+": "+sDataStr, 3, lggr)
+						keystorePassword := []byte{'p', 'a', 's', 's', 'w', 'o', 'r', 'd', '1', '2', '3'}
+						defer zeroing(keystorePassword)
+
+						keystoreObj, err := ReadKeyStoreFromBytes(s, keystorePassword)
+						//keystoreO := reflect.ValueOf(keystoreObj)
+
+						//for ik, iv := range keystoreObj.([]interface{})[0].([]interface{})[0].(map[string]interface{}) {
+						//for ik, iv := range keystoreObj() {
+						//	fmt.Printf("Keystore id %+v\n", ik)
+						//	fmt.Printf("Keystore value %+v\n", iv)
+						//}
+
+						if err != nil {
+							//LggrK.Error(err, "Failed to find keystore in secret/"+e.Name+" in namespace/"+el)
+						} else {
+							fmt.Printf(k+"Keystore found and decrypted in secret/"+e.Name+" in namespace/"+el+"! %+v\n", keystoreObj)
+							fmt.Printf("%+v\n", keystoreObj)
+							/*
+								for ik, iv := range keystoreObj.m {
+									// key == id, label, properties, etc
+									fmt.Printf("Keystore id %+v\n", ik)
+									fmt.Printf("Keystore value %+v\n", iv)
+								}
+
+
+								LogWithLevel(k+": "+sDataStr, 5, LggrK)
+							*/
+						}
 
 						// See if this contains a binary object that holds a Java Keystore
 						// See if this Keystore has a Certificate
@@ -218,17 +246,17 @@ func (r *KeystoreSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 		//=========================== CONFIGMAPS
 		case "ConfigMap":
-			LogWithLevel("Checking for access to ConfigMap in ns/"+el, 3, lggr)
+			LogWithLevel("Checking for access to ConfigMap in ns/"+el, 3, LggrK)
 			// Get the list of ConfigMaps in this namespace
 			configMapList := &corev1.ConfigMapList{}
 			err = cl.List(context.Background(), configMapList, targetListOptions)
 			if err != nil {
-				lggr.Error(err, "Failed to list ConfigMaps in ns/"+el)
+				LggrK.Error(err, "Failed to list ConfigMaps in ns/"+el)
 			}
 
 			// Loop through ConfigMaps
 			for _, e := range configMapList.Items {
-				LogWithLevel("Getting configmap/"+e.Name+" in namespace/"+el, 3, lggr)
+				LogWithLevel("Getting configmap/"+e.Name+" in namespace/"+el, 3, LggrK)
 				configMapItem, _ := GetConfigMap(string(e.Name), el, cl)
 
 				// Loop through the actual ConfigMap data
@@ -236,7 +264,7 @@ func (r *KeystoreSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 					// Store the secret as a base64 decoded string from the byte slice
 					cmDataStr := string(cm)
 
-					LogWithLevel(k+": "+cmDataStr, 3, lggr)
+					LogWithLevel(k+": "+cmDataStr, 5, LggrK)
 
 					// See if this contains a binary object that holds a Java Keystore
 					// See if this Keystore has a Certificate
@@ -245,8 +273,8 @@ func (r *KeystoreSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		//=========================== DEFAULT - INVALID KIND
 		default:
 			// Unsupported Object Kind
-			lggr.Info("Invalid Target Kind!")
-			lggr.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
+			LggrK.Info("Invalid Target Kind!")
+			LggrK.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
 			time.Sleep(time.Second * time.Duration(scanningInterval))
 			return ctrl.Result{}, nil
 		}
@@ -260,7 +288,7 @@ func (r *KeystoreSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// return ctrl.Result{Requeue: true}, nil
 
 	// Reconcile for any reason other than an error after 5 seconds
-	lggr.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
+	LggrK.Info("Running reconciler again in " + strconv.Itoa(scanningInterval) + "s")
 	return ctrl.Result{RequeueAfter: time.Second * time.Duration(scanningInterval)}, nil
 
 }
@@ -276,7 +304,8 @@ func (r *KeystoreSentinelReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func ReadKeyStoreFromBytes(byteData []byte, password []byte) (keystore.KeyStore, error) {
 	f := bytes.NewReader(byteData)
 
-	keyStore := keystore.New()
+	//keyStore := keystore.New()
+	keyStore := keystore.New(keystore.WithCaseExactAliases(), keystore.WithOrderedAliases())
 	if err := keyStore.Load(f, password); err != nil {
 		return keyStore, err
 	}

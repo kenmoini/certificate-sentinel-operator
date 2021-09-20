@@ -16,6 +16,7 @@ metadata:
   name: cert-sentinel
   labels:
     polyglot.systems/certificate-sentinel-namespace: "true"
+    polyglot.systems/keystore-sentinel-namespace: "true"
 spec: {}
 ```
 
