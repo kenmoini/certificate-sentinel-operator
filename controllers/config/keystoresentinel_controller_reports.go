@@ -35,49 +35,29 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
-// intervalToSeconds takes a string interval and returns the number of seconds to add to the time.Time object
-func intervalToSeconds(effectiveReportInterval string) int64 {
-	var secondsToAdd int64
-	// Find how many seconds we need to add to the current Unix Epoch
-	switch effectiveReportInterval {
-	case "debug":
-		// debug mode cycles every 5 minutes
-		secondsToAdd = 300
-	case "weekly":
-		secondsToAdd = 604800
-	case "monthly":
-		secondsToAdd = 2592000
-	case "daily":
-		secondsToAdd = 86400
-	default:
-		secondsToAdd = 86400
-	}
-	return secondsToAdd
-}
-
-// processReport processes reports for the CertificateSentinel CRD
-func processReport(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger, clnt client.Client) int64 {
+// processKeystoreReport processes reports for the KeystoreSentinel CRD
+func processKeystoreReport(keystoreSentinel configv1.KeystoreSentinel, lggr logr.Logger, clnt client.Client) int64 {
 	// Set up variables
 	currentUnixTime := time.Now().Unix()
-	lastReportSentTime := defaults.SetDefaultInt64(currentUnixTime, certificateSentinel.Status.LastReportSent)
-	effectiveReportInterval := defaults.SetDefaultString(defaults.ReportInterval, certificateSentinel.Spec.Alert.AlertConfiguration.ReportInterval)
+	lastReportSentTime := defaults.SetDefaultInt64(currentUnixTime, keystoreSentinel.Status.LastReportSent)
+	effectiveReportInterval := defaults.SetDefaultString(defaults.ReportInterval, keystoreSentinel.Spec.Alert.AlertConfiguration.ReportInterval)
 
 	// Add the times together
 	addedTime := (lastReportSentTime + intervalToSeconds(effectiveReportInterval))
 
 	// Next expected time to send is before the current time, overdue to send
 	if (addedTime < time.Now().Unix()) || (lastReportSentTime == currentUnixTime) {
-		LogWithLevel("Dispatching report for "+certificateSentinel.Spec.Alert.AlertName, 2, lggr)
+		LogWithLevel("Dispatching report for "+keystoreSentinel.Spec.Alert.AlertName, 2, lggr)
 
 		// Send out alert based on alert type
-		switch certificateSentinel.Spec.Alert.AlertType {
+		switch keystoreSentinel.Spec.Alert.AlertType {
 		case "smtp":
-			createSMTPReport(certificateSentinel, lggr, clnt)
+			createKeystoreSMTPReport(keystoreSentinel, lggr, clnt)
 		case "logger":
-			loggr := createLoggerReport(certificateSentinel, lggr)
+			loggr := createKeystoreLoggerReport(keystoreSentinel, lggr)
 			lggr.Info(loggr)
 		default:
-			loggr := createLoggerReport(certificateSentinel, lggr)
+			loggr := createKeystoreLoggerReport(keystoreSentinel, lggr)
 			lggr.Info(loggr)
 		}
 
@@ -86,19 +66,160 @@ func processReport(certificateSentinel configv1.CertificateSentinel, lggr logr.L
 	return lastReportSentTime
 }
 
-// createLoggerReport loops through CertificateSentinel.Status and creates a stdout report
-func createLoggerReport(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger) string {
-	return createTextTableReport(certificateSentinel, lggr)
+// createKeystoreLoggerReport loops through KeystoreSentinel.Status and creates a stdout report
+func createKeystoreLoggerReport(keystoreSentinel configv1.KeystoreSentinel, lggr logr.Logger) string {
+	return createKeystoreTextTableReport(keystoreSentinel, lggr)
 }
 
-// createSMTPReport loops through CertificateSentinel.Status and sends an email report
-func createSMTPReport(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger, clnt client.Client) string {
+// createKeystoreTextTableReport creates a Text-based table of the report, used in logger reports and text-based SMTP reports
+func createKeystoreTextTableReport(keystoreSentinel configv1.KeystoreSentinel, lggr logr.Logger) string {
+	currentConfig, _ := config.GetConfig()
+	clusterEndpoint := currentConfig.Host
+	apiPath := currentConfig.APIPath
+	expiredCertificateCount := 0
 
-	textEmailReport := tableTextReportToBasicHTMLReport(createTextTableReport(certificateSentinel, lggr))
-	htmlEmailReport := createSMTPHTMLReport(certificateSentinel, lggr)
+	// Set up init vars
+	var reportLines string
+	APIVersionLongest := "APIVersion"
+	KindLongest := "Kind"
+	NamespaceLongest := "Namespace"
+	NameLongest := "Name"
+	DataKeyLongest := "Data Key"
+	KeystoreAliasLongest := "Keystore Alias"
+	CertCNLongest := "Certificate CN"
+	IsCALongest := "Is CA"
+	CACNLongest := "Signing CA CN"
+	ExpirationDateLongest := "Expiration Date"
+	TriggeredDaysOutLongest := "Triggered Days Out"
+
+	// Loop through the .status.DiscoveredCertificates
+	for _, certInfo := range keystoreSentinel.Status.DiscoveredKeystoreCertificates {
+		// If this is an expired certificate
+		if len(certInfo.TriggeredDaysOut) > 0 {
+			expiredCertificateCount++
+			// Set up Logger Lines for length
+			APIVersionLongest = helpers.ReturnLonger(APIVersionLongest, certInfo.APIVersion)
+			KindLongest = helpers.ReturnLonger(KindLongest, certInfo.Kind)
+			NamespaceLongest = helpers.ReturnLonger(NamespaceLongest, certInfo.Namespace)
+			NameLongest = helpers.ReturnLonger(NameLongest, certInfo.Name)
+			DataKeyLongest = helpers.ReturnLonger(DataKeyLongest, certInfo.DataKey)
+			KeystoreAliasLongest = helpers.ReturnLonger(KeystoreAliasLongest, certInfo.KeystoreAlias)
+			CertCNLongest = helpers.ReturnLonger(CertCNLongest, certInfo.CommonName)
+			IsCALongest = helpers.ReturnLonger(IsCALongest, strconv.FormatBool(certInfo.IsCertificateAuthority))
+			CACNLongest = helpers.ReturnLonger(CACNLongest, certInfo.CertificateAuthorityCommonName)
+			ExpirationDateLongest = helpers.ReturnLonger(ExpirationDateLongest, certInfo.Expiration)
+			TriggeredDaysOutLongest = helpers.ReturnLonger(TriggeredDaysOutLongest, strings.Trim(strings.Join(strings.Fields(fmt.Sprint(certInfo.TriggeredDaysOut)), ", "), "[]"))
+		}
+	}
+
+	// Set the longest length value
+	APIVersionLength := len(APIVersionLongest)
+	KindLength := len(KindLongest)
+	NamespaceLength := len(NamespaceLongest)
+	NameLength := len(NameLongest)
+	DataKeyLength := len(DataKeyLongest)
+	KeystoreAliasLength := len(KeystoreAliasLongest)
+	CertCNLength := len(CertCNLongest)
+	IsCALength := len(IsCALongest)
+	CACNLength := len(CACNLongest)
+	ExpirationDateLength := len(ExpirationDateLongest)
+	TriggeredDaysOutLength := len(TriggeredDaysOutLongest)
+	TotalLineLength := (APIVersionLength + KindLength + NamespaceLength + NameLength + DataKeyLength + KeystoreAliasLength + CertCNLength + IsCALength + CACNLength + ExpirationDateLength + TriggeredDaysOutLength + 34)
+	LineBreak := helpers.StrPad("-", TotalLineLength, "-", "BOTH")
+
+	// Loop through the .status.DiscoveredKeystoreCertificates
+	for _, certInfo := range keystoreSentinel.Status.DiscoveredKeystoreCertificates {
+		if len(certInfo.TriggeredDaysOut) > 0 {
+			// Set up Logger Lines
+			loggerReportLineStructure := LoggerKeystoreReportLineStructure{
+				APIVersion:                     helpers.StrPad(certInfo.APIVersion, APIVersionLength, " ", "BOTH"),
+				Kind:                           helpers.StrPad(certInfo.Kind, KindLength, " ", "BOTH"),
+				Namespace:                      helpers.StrPad(certInfo.Namespace, NamespaceLength, " ", "BOTH"),
+				Name:                           helpers.StrPad(certInfo.Name, NameLength, " ", "BOTH"),
+				Key:                            helpers.StrPad(certInfo.DataKey, DataKeyLength, " ", "BOTH"),
+				KeystoreAlias:                  helpers.StrPad(certInfo.KeystoreAlias, KeystoreAliasLength, " ", "BOTH"),
+				CommonName:                     helpers.StrPad(certInfo.CommonName, CertCNLength, " ", "BOTH"),
+				IsCA:                           helpers.StrPad(strconv.FormatBool(certInfo.IsCertificateAuthority), IsCALength, " ", "BOTH"),
+				CertificateAuthorityCommonName: helpers.StrPad(certInfo.CertificateAuthorityCommonName, CACNLength, " ", "BOTH"),
+				ExpirationDate:                 helpers.StrPad(certInfo.Expiration, ExpirationDateLength, " ", "BOTH"),
+				TriggeredDaysOut:               helpers.StrPad(strings.Trim(strings.Join(strings.Fields(fmt.Sprint(certInfo.TriggeredDaysOut)), ", "), "[]"), TriggeredDaysOutLength, " ", "BOTH"),
+			}
+			lineBuf := new(bytes.Buffer)
+			loggerLineTemplate, err := template.New("loggerLine").Parse(LoggerKeystoreReportLine)
+			if err != nil {
+				lggr.Error(err, "Error parsing loggerLineTemplate template!")
+			}
+			err = loggerLineTemplate.Execute(lineBuf, loggerReportLineStructure)
+			if err != nil {
+				lggr.Error(err, "Error executing loggerLineTemplate template!")
+			}
+			// Append to total reportLines
+			reportLines = (reportLines + lineBuf.String())
+		}
+	}
+
+	// Setup Logger Headers
+	loggerReportHeaderStructure := LoggerKeystoreReportHeaderStructure{
+		APIVersion:                     helpers.StrPad("APIVersion", APIVersionLength, " ", "BOTH"),
+		Kind:                           helpers.StrPad("Kind", KindLength, " ", "BOTH"),
+		Namespace:                      helpers.StrPad("Namespace", NamespaceLength, " ", "BOTH"),
+		Name:                           helpers.StrPad("Name", NameLength, " ", "BOTH"),
+		Key:                            helpers.StrPad("Data Key", DataKeyLength, " ", "BOTH"),
+		KeystoreAlias:                  helpers.StrPad("Keystore Alias", KeystoreAliasLength, " ", "BOTH"),
+		CommonName:                     helpers.StrPad("Certificate CN", CertCNLength, " ", "BOTH"),
+		IsCA:                           helpers.StrPad("Is CA", IsCALength, " ", "BOTH"),
+		CertificateAuthorityCommonName: helpers.StrPad("Signing CA CN", CACNLength, " ", "BOTH"),
+		ExpirationDate:                 helpers.StrPad("Expiration Date", ExpirationDateLength, " ", "BOTH"),
+		TriggeredDaysOut:               helpers.StrPad("Triggered Days Out", TriggeredDaysOutLength, " ", "BOTH"),
+	}
+	headerBuf := new(bytes.Buffer)
+	loggerHeaderTemplate, err := template.New("loggerHeader").Parse(LoggerKeystoreReportHeader)
+	if err != nil {
+		lggr.Error(err, "Error parsing loggerHeaderTemplate template!", 1, lggr)
+	}
+	err = loggerHeaderTemplate.Execute(headerBuf, loggerReportHeaderStructure)
+	if err != nil {
+		lggr.Error(err, "Error executing loggerHeaderTemplate template!")
+	}
+
+	// Set up Logger Report
+	loggerReportStructure := LoggerKeystoreReportStructure{
+		Namespace:          keystoreSentinel.Namespace,
+		Name:               keystoreSentinel.Name,
+		DateSent:           time.Now().UTC().String(),
+		ClusterAPIEndpoint: clusterEndpoint + apiPath,
+		TotalKeystores:     strconv.Itoa(keystoreSentinel.Status.TotalKeystoresFound),
+		KeystoresAtRisk:    strconv.Itoa(keystoreSentinel.Status.KeystoresAtRisk),
+		TotalCerts:         strconv.Itoa(len(keystoreSentinel.Status.DiscoveredKeystoreCertificates)),
+		ExpiringCerts:      strconv.Itoa(keystoreSentinel.Status.ExpiringCertificates),
+		ReportLines:        reportLines,
+		Footer:             headerBuf.String(),
+		Header:             headerBuf.String(),
+		Divider:            LineBreak,
+	}
+	// Build template
+	reportBuf := new(bytes.Buffer)
+	loggerReportTemplate, err := template.New("loggerReport").Parse(LoggerKeystoreReport)
+	if err != nil {
+		lggr.Error(err, "Error parsing loggerReportTemplate template!")
+	}
+	// Execute our data against the template
+	err = loggerReportTemplate.Execute(reportBuf, loggerReportStructure)
+	if err != nil {
+		lggr.Error(err, "Error executing loggerReportTemplate template!")
+	}
+
+	return reportBuf.String()
+}
+
+// createKeystoreSMTPReport loops through CertificateSentinel.Status and sends an email report
+func createKeystoreSMTPReport(keystoreSentinel configv1.KeystoreSentinel, lggr logr.Logger, clnt client.Client) string {
+
+	textEmailReport := tableTextReportToBasicHTMLReport(createKeystoreTextTableReport(keystoreSentinel, lggr))
+	htmlEmailReport := createKeystoreSMTPHTMLReport(keystoreSentinel, lggr)
 
 	// Loop through the alerts
-	alert := certificateSentinel.Spec.Alert
+	alert := keystoreSentinel.Spec.Alert
 	if alert.AlertType == "smtp" {
 		// Set up basic SMTP vars
 		var username string
@@ -113,7 +234,7 @@ func createSMTPReport(certificateSentinel configv1.CertificateSentinel, lggr log
 		// Get SMTP Authentication Secret if the AuthType is not `none`
 		smtpAuthSecret := &corev1.Secret{}
 		if alert.AlertConfiguration.SMTPAuthType != "none" {
-			smtpAuthSecret, _ = GetSecret(alert.AlertConfiguration.SMTPAuthSecretName, certificateSentinel.Namespace, clnt)
+			smtpAuthSecret, _ = GetSecret(alert.AlertConfiguration.SMTPAuthSecretName, keystoreSentinel.Namespace, clnt)
 		}
 
 		// Assign SMTP Auth vars where needed
@@ -135,7 +256,7 @@ func createSMTPReport(certificateSentinel configv1.CertificateSentinel, lggr log
 			alert.AlertConfiguration.SMTPDestinationEmailAddresses,
 			alert.AlertConfiguration.SMTPSenderEmailAddress,
 			alert.AlertConfiguration.SMTPEndpoint,
-			"Certificate Sentinel Operator - CertificateSentinel Report",
+			"Certificate Sentinel Operator - KeystoreSentinel Report",
 			textEmailReport,
 			htmlEmailReport)
 	}
@@ -143,140 +264,8 @@ func createSMTPReport(certificateSentinel configv1.CertificateSentinel, lggr log
 	return textEmailReport
 }
 
-// createTextTableReport creates a Text-based table of the report, used in logger reports and text-based SMTP reports
-func createTextTableReport(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger) string {
-	currentConfig, _ := config.GetConfig()
-	clusterEndpoint := currentConfig.Host
-	apiPath := currentConfig.APIPath
-	expiredCertificateCount := 0
-
-	// Set up init vars
-	var reportLines string
-	APIVersionLongest := "APIVersion"
-	KindLongest := "Kind"
-	NamespaceLongest := "Namespace"
-	NameLongest := "Name"
-	DataKeyLongest := "Data Key"
-	CertCNLongest := "Certificate CN"
-	IsCALongest := "Is CA"
-	CACNLongest := "Signing CA CN"
-	ExpirationDateLongest := "Expiration Date"
-	TriggeredDaysOutLongest := "Triggered Days Out"
-
-	// Loop through the .status.DiscoveredCertificates
-	for _, certInfo := range certificateSentinel.Status.DiscoveredCertificates {
-		// If this is an expired certificate
-		if len(certInfo.TriggeredDaysOut) > 0 {
-			expiredCertificateCount++
-			// Set up Logger Lines for length
-			APIVersionLongest = helpers.ReturnLonger(APIVersionLongest, certInfo.APIVersion)
-			KindLongest = helpers.ReturnLonger(KindLongest, certInfo.Kind)
-			NamespaceLongest = helpers.ReturnLonger(NamespaceLongest, certInfo.Namespace)
-			NameLongest = helpers.ReturnLonger(NameLongest, certInfo.Name)
-			DataKeyLongest = helpers.ReturnLonger(DataKeyLongest, certInfo.DataKey)
-			CertCNLongest = helpers.ReturnLonger(CertCNLongest, certInfo.CommonName)
-			IsCALongest = helpers.ReturnLonger(IsCALongest, strconv.FormatBool(certInfo.IsCertificateAuthority))
-			CACNLongest = helpers.ReturnLonger(CACNLongest, certInfo.CertificateAuthorityCommonName)
-			ExpirationDateLongest = helpers.ReturnLonger(ExpirationDateLongest, certInfo.Expiration)
-			TriggeredDaysOutLongest = helpers.ReturnLonger(TriggeredDaysOutLongest, strings.Trim(strings.Join(strings.Fields(fmt.Sprint(certInfo.TriggeredDaysOut)), ", "), "[]"))
-		}
-	}
-
-	// Set the longest length value
-	APIVersionLength := len(APIVersionLongest)
-	KindLength := len(KindLongest)
-	NamespaceLength := len(NamespaceLongest)
-	NameLength := len(NameLongest)
-	DataKeyLength := len(DataKeyLongest)
-	CertCNLength := len(CertCNLongest)
-	IsCALength := len(IsCALongest)
-	CACNLength := len(CACNLongest)
-	ExpirationDateLength := len(ExpirationDateLongest)
-	TriggeredDaysOutLength := len(TriggeredDaysOutLongest)
-	TotalLineLength := (APIVersionLength + KindLength + NamespaceLength + NameLength + DataKeyLength + CertCNLength + IsCALength + CACNLength + ExpirationDateLength + TriggeredDaysOutLength + 31)
-	LineBreak := helpers.StrPad("-", TotalLineLength, "-", "BOTH")
-
-	// Loop through the .status.DiscoveredCertificates
-	for _, certInfo := range certificateSentinel.Status.DiscoveredCertificates {
-		if len(certInfo.TriggeredDaysOut) > 0 {
-			// Set up Logger Lines
-			loggerReportLineStructure := LoggerReportLineStructure{
-				APIVersion:                     helpers.StrPad(certInfo.APIVersion, APIVersionLength, " ", "BOTH"),
-				Kind:                           helpers.StrPad(certInfo.Kind, KindLength, " ", "BOTH"),
-				Namespace:                      helpers.StrPad(certInfo.Namespace, NamespaceLength, " ", "BOTH"),
-				Name:                           helpers.StrPad(certInfo.Name, NameLength, " ", "BOTH"),
-				Key:                            helpers.StrPad(certInfo.DataKey, DataKeyLength, " ", "BOTH"),
-				CommonName:                     helpers.StrPad(certInfo.CommonName, CertCNLength, " ", "BOTH"),
-				IsCA:                           helpers.StrPad(strconv.FormatBool(certInfo.IsCertificateAuthority), IsCALength, " ", "BOTH"),
-				CertificateAuthorityCommonName: helpers.StrPad(certInfo.CertificateAuthorityCommonName, CACNLength, " ", "BOTH"),
-				ExpirationDate:                 helpers.StrPad(certInfo.Expiration, ExpirationDateLength, " ", "BOTH"),
-				TriggeredDaysOut:               helpers.StrPad(strings.Trim(strings.Join(strings.Fields(fmt.Sprint(certInfo.TriggeredDaysOut)), ", "), "[]"), TriggeredDaysOutLength, " ", "BOTH"),
-			}
-			lineBuf := new(bytes.Buffer)
-			loggerLineTemplate, err := template.New("loggerLine").Parse(LoggerReportLine)
-			if err != nil {
-				lggr.Error(err, "Error parsing loggerLineTemplate template!")
-			}
-			err = loggerLineTemplate.Execute(lineBuf, loggerReportLineStructure)
-			if err != nil {
-				lggr.Error(err, "Error executing loggerLineTemplate template!")
-			}
-			// Append to total reportLines
-			reportLines = (reportLines + lineBuf.String())
-		}
-	}
-
-	// Setup Logger Headers
-	loggerReportHeaderStructure := LoggerReportHeaderStructure{
-		APIVersion:                     helpers.StrPad("APIVersion", APIVersionLength, " ", "BOTH"),
-		Kind:                           helpers.StrPad("Kind", KindLength, " ", "BOTH"),
-		Namespace:                      helpers.StrPad("Namespace", NamespaceLength, " ", "BOTH"),
-		Name:                           helpers.StrPad("Name", NameLength, " ", "BOTH"),
-		Key:                            helpers.StrPad("Data Key", DataKeyLength, " ", "BOTH"),
-		CommonName:                     helpers.StrPad("Certificate CN", CertCNLength, " ", "BOTH"),
-		IsCA:                           helpers.StrPad("Is CA", IsCALength, " ", "BOTH"),
-		CertificateAuthorityCommonName: helpers.StrPad("Signing CA CN", CACNLength, " ", "BOTH"),
-		ExpirationDate:                 helpers.StrPad("Expiration Date", ExpirationDateLength, " ", "BOTH"),
-		TriggeredDaysOut:               helpers.StrPad("Triggered Days Out", TriggeredDaysOutLength, " ", "BOTH"),
-	}
-	headerBuf := new(bytes.Buffer)
-	loggerHeaderTemplate, err := template.New("loggerHeader").Parse(LoggerReportHeader)
-	if err != nil {
-		lggr.Error(err, "Error parsing loggerHeaderTemplate template!", 1, lggr)
-	}
-	err = loggerHeaderTemplate.Execute(headerBuf, loggerReportHeaderStructure)
-	if err != nil {
-		lggr.Error(err, "Error executing loggerHeaderTemplate template!")
-	}
-
-	// Set up Logger Report
-	loggerReportStructure := LoggerReportStructure{
-		Namespace:          certificateSentinel.Namespace,
-		Name:               certificateSentinel.Name,
-		DateSent:           time.Now().UTC().String(),
-		ClusterAPIEndpoint: clusterEndpoint + apiPath,
-		TotalCerts:         strconv.Itoa(len(certificateSentinel.Status.DiscoveredCertificates)),
-		ExpiringCerts:      strconv.Itoa(expiredCertificateCount),
-		ReportLines:        reportLines,
-		Footer:             headerBuf.String(),
-		Header:             headerBuf.String(),
-		Divider:            LineBreak,
-	}
-	reportBuf := new(bytes.Buffer)
-	loggerReportTemplate, err := template.New("loggerReport").Parse(LoggerReport)
-	if err != nil {
-		lggr.Error(err, "Error parsing loggerReportTemplate template!")
-	}
-	err = loggerReportTemplate.Execute(reportBuf, loggerReportStructure)
-	if err != nil {
-		lggr.Error(err, "Error executing loggerReportTemplate template!")
-	}
-
-	return reportBuf.String()
-}
-
-// createSMTPHTMLReport creates a rich HTML-based table of the report, used in SMTP reports
-func createSMTPHTMLReport(certificateSentinel configv1.CertificateSentinel, lggr logr.Logger) string {
+// createKeystoreSMTPHTMLReport creates a rich HTML-based table of the report, used in SMTP reports
+func createKeystoreSMTPHTMLReport(keystoreSentinel configv1.KeystoreSentinel, lggr logr.Logger) string {
 
 	// Set up init vars
 	var reportLines string
@@ -287,7 +276,7 @@ func createSMTPHTMLReport(certificateSentinel configv1.CertificateSentinel, lggr
 	apiPath := currentConfig.APIPath
 
 	// Loop through the .status.DiscoveredCertificates
-	for iCI, certInfo := range certificateSentinel.Status.DiscoveredCertificates {
+	for iCI, certInfo := range keystoreSentinel.Status.DiscoveredKeystoreCertificates {
 		if len(certInfo.TriggeredDaysOut) > 0 {
 			expiredCertificateCount++
 			// Set up styles
@@ -307,12 +296,13 @@ func createSMTPHTMLReport(certificateSentinel configv1.CertificateSentinel, lggr
 			}
 
 			// Set up HTML Lines
-			htmlSMTPReportLine := HTMLReportLineStructure{
+			htmlSMTPReportLine := HTMLKeystoreReportLineStructure{
 				APIVersion:                     certInfo.APIVersion,
 				Kind:                           certInfo.Kind,
 				Namespace:                      certInfo.Namespace,
 				Name:                           certInfo.Name,
 				Key:                            certInfo.DataKey,
+				KeystoreAlias:                  certInfo.KeystoreAlias,
 				CommonName:                     certInfo.CommonName,
 				IsCA:                           strconv.FormatBool(certInfo.IsCertificateAuthority),
 				CertificateAuthorityCommonName: certInfo.CertificateAuthorityCommonName,
@@ -322,7 +312,7 @@ func createSMTPHTMLReport(certificateSentinel configv1.CertificateSentinel, lggr
 				CellStyles:                     cellStyles,
 			}
 			lineBuf := new(bytes.Buffer)
-			htmlLineTemplate, err := template.New("tableLine").Parse(HTMLSMTPReportLine)
+			htmlLineTemplate, err := template.New("tableLine").Parse(HTMLSMTPKeystoreReportLine)
 			if err != nil {
 				lggr.Error(err, "Error parsing htmlSMTPReportLine template!")
 			}
@@ -340,12 +330,13 @@ func createSMTPHTMLReport(certificateSentinel configv1.CertificateSentinel, lggr
 	cellStyles := "padding:6px;border-top: 1px solid #999;border-bottom: 1px solid #999;text-align:left;"
 
 	// Setup HTML Headers
-	htmlReportHeaderStructure := HTMLReportHeaderStructure{
+	htmlReportHeaderStructure := HTMLKeystoreReportHeaderStructure{
 		APIVersion:                     "APIVersion",
 		Kind:                           "Kind",
 		Namespace:                      "Namespace",
 		Name:                           "Name",
 		Key:                            "Data Key",
+		KeystoreAlias:                  "Keystore Alias",
 		CommonName:                     "Certificate CN",
 		IsCA:                           "Is CA",
 		CertificateAuthorityCommonName: "Signing CA CN",
@@ -355,7 +346,7 @@ func createSMTPHTMLReport(certificateSentinel configv1.CertificateSentinel, lggr
 		CellStyles:                     cellStyles,
 	}
 	headerBuf := new(bytes.Buffer)
-	tableHeaderTemplate, err := template.New("tableHeader").Parse(HTMLSMTPReportHeader)
+	tableHeaderTemplate, err := template.New("tableHeader").Parse(HTMLSMTPKeystoreReportHeader)
 	if err != nil {
 		lggr.Error(err, "Error parsing tableHeaderTemplate template!")
 	}
@@ -365,20 +356,22 @@ func createSMTPHTMLReport(certificateSentinel configv1.CertificateSentinel, lggr
 	}
 
 	// Set up HTML Report
-	htmlReportStructure := HTMLReportStructure{
-		Namespace:          certificateSentinel.Namespace,
-		Name:               certificateSentinel.Name,
+	htmlReportStructure := HTMLKeystoreReportStructure{
+		Namespace:          keystoreSentinel.Namespace,
+		Name:               keystoreSentinel.Name,
 		DateSent:           string(time.Now().UTC().Format(time.RFC822Z)),
 		ClusterAPIEndpoint: clusterEndpoint + apiPath,
-		TotalCerts:         strconv.Itoa(len(certificateSentinel.Status.DiscoveredCertificates)),
-		ExpiringCerts:      strconv.Itoa(expiredCertificateCount),
+		TotalKeystores:     strconv.Itoa(keystoreSentinel.Status.TotalKeystoresFound),
+		KeystoresAtRisk:    strconv.Itoa(keystoreSentinel.Status.KeystoresAtRisk),
+		TotalCerts:         strconv.Itoa(len(keystoreSentinel.Status.DiscoveredKeystoreCertificates)),
+		ExpiringCerts:      strconv.Itoa(keystoreSentinel.Status.ExpiringCertificates),
 		TableRows:          reportLines,
 		THead:              headerBuf.String(),
 		TFoot:              headerBuf.String(),
 		BodyDivider:        HTMLSMTPReportBodyDivider,
 	}
 	reportBuf := new(bytes.Buffer)
-	htmlReportTemplate, err := template.New("HTMLReport").Parse(HTMLSMTPReportBody)
+	htmlReportTemplate, err := template.New("HTMLReport").Parse(HTMLSMTPKeystoreReportBody)
 	if err != nil {
 		lggr.Error(err, "Error parsing htmlReportTemplate template!")
 	}
@@ -388,23 +381,4 @@ func createSMTPHTMLReport(certificateSentinel configv1.CertificateSentinel, lggr
 	}
 
 	return reportBuf.String()
-}
-
-// tableTextReportToBasicHTMLReport takes a basic text-based table report used by logger and turns it into a basic HTML report
-func tableTextReportToBasicHTMLReport(table string) string {
-	// Set up Logger Report
-	textSMTPReportStructure := TextSMTPReportStructure{
-		Content: table,
-	}
-	htmlBuf := new(bytes.Buffer)
-	textSMTPReportTemplate, err := template.New("textSMTPReport").Parse(TextSMTPReportDocument)
-	if err != nil {
-		lggr.Error(err, "Error parsing textSMTPReportTemplate template!")
-	}
-	err = textSMTPReportTemplate.Execute(htmlBuf, textSMTPReportStructure)
-	if err != nil {
-		lggr.Error(err, "Error executing textSMTPReportTemplate template!")
-	}
-
-	return htmlBuf.String()
 }

@@ -19,7 +19,9 @@ package config
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"crypto/x509"
+	"reflect"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	corev1 "k8s.io/api/core/v1"
@@ -29,14 +31,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
 	//"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	configv1 "github.com/kenmoini/certificate-sentinel-operator/apis/config/v1"
-	defaults "github.com/kenmoini/certificate-sentinel-operator/controllers/defaults"
-	keystore "github.com/pavel-v-chernykh/keystore-go/v4"
 	"strconv"
 	"time"
+
+	configv1 "github.com/kenmoini/certificate-sentinel-operator/apis/config/v1"
+	defaults "github.com/kenmoini/certificate-sentinel-operator/controllers/defaults"
+	helpers "github.com/kenmoini/certificate-sentinel-operator/controllers/helpers"
+	keystore "github.com/pavel-v-chernykh/keystore-go/v4"
 )
 
 //===========================================================================================
@@ -91,9 +96,9 @@ func (r *KeystoreSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	currentConfig, _ := config.GetConfig()
 	clusterEndpoint := currentConfig.Host
 	apiPath := currentConfig.APIPath
-	//statusLists := configv1.KeystoreSentinelStatus{
-	//	DiscoveredKeystores: []configv1.KeystoreInformation{},
-	//}
+	statusLists := configv1.KeystoreSentinelStatus{
+		DiscoveredKeystoreCertificates: []configv1.KeystoreInformation{},
+	}
 
 	LogWithLevel("Connecting to:"+clusterEndpoint, 3, LggrK)
 	LogWithLevel("API Path:"+apiPath, 3, LggrK)
@@ -124,16 +129,20 @@ func (r *KeystoreSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	serviceAccount := keystoreSentinel.Spec.Target.ServiceAccount
 	targetKind := keystoreSentinel.Spec.Target.Kind
-	//targetAPIVersion := keystoreSentinel.Spec.Target.APIVersion
-	//targetDaysOut := keystoreSentinel.Spec.Target.DaysOut
-	//timeOut := DaysOutToTimeOut(targetDaysOut)
+	targetAPIVersion := keystoreSentinel.Spec.Target.APIVersion
+	targetDaysOut := keystoreSentinel.Spec.Target.DaysOut
+	timeOut := DaysOutToTimeOut(targetDaysOut)
 
 	targetNamespaceLabels := keystoreSentinel.Spec.Target.NamespaceLabels
 	targetLabels := keystoreSentinel.Spec.Target.TargetLabels
 	targetLabelSelector, targetNamespaceLabelSelector := SetupLabelSelectors(targetLabels, targetNamespaceLabels, LggrK)
 
-	//CertHashList := []string{}
-	//expiredKeystoreCount := 0
+	var CertHashList []string
+	//var decodedCertificates []x509.Certificate
+	keystoreCount := 0
+	keystoreAtRisk := false
+	var expiredKeystoreCount int
+	var expiredKeystoreCertificatesCount int
 
 	LogWithLevel("Processing KeystoreSentinel target: "+targetName, 2, LggrK)
 
@@ -185,7 +194,16 @@ func (r *KeystoreSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	// Loop through the namespaces in scope for this target
 	for _, el := range effectiveNamespaces {
+
+		// Check to make sure we can even access the Keystore password before scanning for them in this namespace
+		passwordBytes, err := getPasswordBytesFromSpecTarget(keystoreSentinel.Spec.Target.KeystorePassword, el, cl)
+		if err != nil {
+			LggrK.Error(err, "Failed to process keystore password source!")
+		}
+		defer zeroing(passwordBytes)
+
 		targetListOptions := &client.ListOptions{Namespace: el, LabelSelector: targetLabelSelector}
+
 		switch targetKind {
 		//=========================== SECRETS
 		case "Secret":
@@ -208,38 +226,60 @@ func (r *KeystoreSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 					for k, s := range secretItem.Data {
 						// Store the secret as a base64 decoded string from the byte slice
 						//sDataStr := string(s)
+						keystoreAtRisk = false
 
-						keystorePassword := []byte{'p', 'a', 's', 's', 'w', 'o', 'r', 'd', '1', '2', '3'}
-						defer zeroing(keystorePassword)
-
-						keystoreObj, err := ReadKeyStoreFromBytes(s, keystorePassword)
-						//keystoreO := reflect.ValueOf(keystoreObj)
-
-						//for ik, iv := range keystoreObj.([]interface{})[0].([]interface{})[0].(map[string]interface{}) {
-						//for ik, iv := range keystoreObj() {
-						//	fmt.Printf("Keystore id %+v\n", ik)
-						//	fmt.Printf("Keystore value %+v\n", iv)
-						//}
+						keystoreObj, err := ReadKeyStoreFromBytes(s, passwordBytes)
 
 						if err != nil {
-							//LggrK.Error(err, "Failed to find keystore in secret/"+e.Name+" in namespace/"+el)
+							// No JKS object found in this secret
 						} else {
-							fmt.Printf(k+"Keystore found and decrypted in secret/"+e.Name+" in namespace/"+el+"! %+v\n", keystoreObj)
-							fmt.Printf("%+v\n", keystoreObj)
-							/*
-								for ik, iv := range keystoreObj.m {
-									// key == id, label, properties, etc
-									fmt.Printf("Keystore id %+v\n", ik)
-									fmt.Printf("Keystore value %+v\n", iv)
+							// Keystore is found
+							LogWithLevel("KEYSTORE FOUND! - ns/"+el+" - secret/"+string(e.Name)+" - key:"+k, 3, LggrK)
+							keystoreCount++
+
+							certs, err := ProcessKeystoreIntoCertificates(keystoreObj)
+							if err != nil {
+								LggrK.Error(err, "Failed to process keystore into certificates!")
+							}
+							for keystoreAlias, certSlice := range certs {
+
+								for _, cert := range certSlice {
+									// Check to see if this has already been added
+									sha_str := createUniqueCertificateChecksum(targetKind+"-"+el+"-"+e.Name+"-"+cert.Subject.CommonName+"-"+cert.Issuer.CommonName, &cert)
+
+									if defaults.ContainsString(CertHashList, sha_str) {
+										// Skipping Certificate
+										LogWithLevel("Already found "+sha_str, 3, LggrK)
+									} else {
+										// Add + Process
+										LogWithLevel("Adding "+sha_str, 3, LggrK)
+										CertHashList = append(CertHashList, sha_str)
+
+										discovered, messages := helpers.ParseKeystoreCertificateIntoObjects(&cert, timeOut, el, e.Name, k, targetKind, targetAPIVersion, keystoreAlias)
+										// Loop through passed messages for log level 3
+										for _, m := range messages {
+											LogWithLevel(m, 3, LggrK)
+										}
+
+										// Add discovered keystore to DiscoveredKeystore
+										if len(discovered) != 0 {
+											for _, iv := range discovered {
+												if len(iv.TriggeredDaysOut) > 0 {
+													expiredKeystoreCertificatesCount++
+													keystoreAtRisk = true
+												}
+												statusLists.DiscoveredKeystoreCertificates = append(statusLists.DiscoveredKeystoreCertificates, iv)
+											}
+										}
+									}
+
 								}
-
-
-								LogWithLevel(k+": "+sDataStr, 5, LggrK)
-							*/
+							}
 						}
 
-						// See if this contains a binary object that holds a Java Keystore
-						// See if this Keystore has a Certificate
+						if keystoreAtRisk {
+							expiredKeystoreCount++
+						}
 
 					}
 				}
@@ -261,13 +301,61 @@ func (r *KeystoreSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 				// Loop through the actual ConfigMap data
 				for k, cm := range configMapItem.Data {
-					// Store the secret as a base64 decoded string from the byte slice
-					cmDataStr := string(cm)
 
-					LogWithLevel(k+": "+cmDataStr, 5, LggrK)
+					keystoreAtRisk = false
 
-					// See if this contains a binary object that holds a Java Keystore
-					// See if this Keystore has a Certificate
+					keystoreObj, err := ReadKeyStoreFromBytes([]byte(cm), passwordBytes)
+
+					if err != nil {
+						// No JKS object found in this configmap
+					} else {
+						// Keystore is found
+						LogWithLevel("KEYSTORE FOUND! - ns/"+el+" - configmap/"+string(e.Name)+" - key:"+k, 3, LggrK)
+						keystoreCount++
+
+						certs, err := ProcessKeystoreIntoCertificates(keystoreObj)
+						if err != nil {
+							LggrK.Error(err, "Failed to process keystore into certificates!")
+						}
+
+						for keystoreAlias, certSlice := range certs {
+							for _, cert := range certSlice {
+								// Check to see if this has already been added
+								sha_str := createUniqueCertificateChecksum(targetKind+"-"+el+"-"+e.Name+"-"+cert.Subject.CommonName+"-"+cert.Issuer.CommonName, &cert)
+
+								if defaults.ContainsString(CertHashList, sha_str) {
+									// Skipping Certificate
+									LogWithLevel("Already found "+sha_str, 3, LggrK)
+								} else {
+									// Add + Process
+									LogWithLevel("Adding "+sha_str, 3, LggrK)
+									CertHashList = append(CertHashList, sha_str)
+
+									discovered, messages := helpers.ParseKeystoreCertificateIntoObjects(&cert, timeOut, el, e.Name, k, targetKind, targetAPIVersion, keystoreAlias)
+									// Loop through passed messages for log level 3
+									for _, m := range messages {
+										LogWithLevel(m, 3, LggrK)
+									}
+
+									// Add discovered keystore to DiscoveredKeystore
+									if len(discovered) != 0 {
+										for _, iv := range discovered {
+											if len(iv.TriggeredDaysOut) > 0 {
+												expiredKeystoreCertificatesCount++
+												keystoreAtRisk = true
+											}
+											//decodedCertificates = append(decodedCertificates, cert)
+											statusLists.DiscoveredKeystoreCertificates = append(statusLists.DiscoveredKeystoreCertificates, iv)
+										}
+									}
+								}
+							}
+						}
+					}
+
+					if keystoreAtRisk {
+						expiredKeystoreCount++
+					}
 				}
 			}
 		//=========================== DEFAULT - INVALID KIND
@@ -279,6 +367,39 @@ func (r *KeystoreSentinelReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return ctrl.Result{}, nil
 		}
 	}
+
+	// Set updater check vars
+	statusChanged := true
+	oldDiscoveredKeystoreCertificates := keystoreSentinel.Status.DiscoveredKeystoreCertificates
+	oldLastReportSent := keystoreSentinel.Status.LastReportSent
+	oldExpiringCertificates := keystoreSentinel.Status.ExpiringCertificates
+	oldKeystoresAtRisk := keystoreSentinel.Status.KeystoresAtRisk
+	oldTotalKeystoresFound := keystoreSentinel.Status.TotalKeystoresFound
+
+	// Merge the Certificates into the .status of the KeystoreSentinel object
+	keystoreSentinel.Status.DiscoveredKeystoreCertificates = statusLists.DiscoveredKeystoreCertificates
+	keystoreSentinel.Status.ExpiringCertificates = expiredKeystoreCertificatesCount
+	keystoreSentinel.Status.KeystoresAtRisk = expiredKeystoreCount
+	keystoreSentinel.Status.TotalKeystoresFound = keystoreCount
+
+	// Process reports if needed, only if there are new certificates at risk
+	if expiredKeystoreCertificatesCount > 0 {
+		keystoreSentinel.Status.LastReportSent = processKeystoreReport(*keystoreSentinel, LggrK, r.Client)
+	}
+
+	// Check the difference in structs
+	if reflect.DeepEqual(oldDiscoveredKeystoreCertificates, keystoreSentinel.Status.DiscoveredKeystoreCertificates) && oldLastReportSent == keystoreSentinel.Status.LastReportSent && oldExpiringCertificates == keystoreSentinel.Status.ExpiringCertificates && oldKeystoresAtRisk == keystoreSentinel.Status.KeystoresAtRisk && oldTotalKeystoresFound == keystoreSentinel.Status.TotalKeystoresFound {
+		statusChanged = false
+	}
+
+	if statusChanged {
+		err = r.Status().Update(ctx, keystoreSentinel)
+		if err != nil {
+			LggrK.Error(err, "Failed to update KeystoreSentinel status")
+			return ctrl.Result{}, err
+		}
+	}
+	LogWithLevel("Found "+strconv.Itoa(len(keystoreSentinel.Status.DiscoveredKeystoreCertificates))+" Certificates in "+strconv.Itoa(keystoreCount)+" Keystores, "+strconv.Itoa(expiredKeystoreCount)+" Keystores of which have "+strconv.Itoa(expiredKeystoreCertificatesCount)+" certificates that are at risk of expiring", 2, LggrK)
 
 	// Reconcile successful - don't requeue
 	// return ctrl.Result{}, nil
@@ -304,11 +425,78 @@ func (r *KeystoreSentinelReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func ReadKeyStoreFromBytes(byteData []byte, password []byte) (keystore.KeyStore, error) {
 	f := bytes.NewReader(byteData)
 
-	//keyStore := keystore.New()
 	keyStore := keystore.New(keystore.WithCaseExactAliases(), keystore.WithOrderedAliases())
 	if err := keyStore.Load(f, password); err != nil {
 		return keyStore, err
 	}
 
 	return keyStore, nil
+}
+
+// ProcessKeystoreIntoCertificates takes a JKS object and turns it into a list of decoded certificates
+func ProcessKeystoreIntoCertificates(keystoreObj keystore.KeyStore) (map[string][]x509.Certificate, error) {
+	certificateMap := make(map[string][]x509.Certificate)
+
+	for _, iV := range keystoreObj.Aliases() {
+		// Check if the entry is a Certificate
+		if keystoreObj.IsTrustedCertificateEntry(iV) {
+			// Pull Certificate bytes from the keystore
+			cert, err := keystoreObj.GetTrustedCertificateEntry(iV)
+			if err != nil {
+				return certificateMap, err
+			}
+			// Make sure this is an X.509 type certificate
+			if cert.Certificate.Type == "X.509" {
+				// Decode certificate bytes into proper x509.Certificate object
+				certsDecode, err := x509.ParseCertificate(cert.Certificate.Content)
+				if err != nil {
+					return certificateMap, err
+				}
+				// Add to certificate list
+				certificateMap[iV] = append(certificateMap[iV], *certsDecode)
+			}
+		}
+	}
+	return certificateMap, nil
+}
+
+func getPasswordBytesFromSpecTarget(keystorePasswordDef configv1.KeystorePassword, namespace string, clnt client.Client) ([]byte, error) {
+	passwordBytes := []byte("changeit")
+	defer zeroing(passwordBytes)
+
+	switch keystorePasswordDef.Type {
+	case "secret":
+		scrt, err := GetSecret(keystorePasswordDef.Secret.Name, namespace, clnt)
+		if err != nil {
+			return []byte{}, err
+		}
+		passwordBytes = scrt.Data[keystorePasswordDef.Secret.Key]
+	case "labels":
+		labelSelector, err := SetupSingleLabelSelector(keystorePasswordDef.Labels.LabelSelectors)
+		if err != nil {
+			return []byte{}, err
+		}
+
+		// Build List Options
+		targetListOptions := &client.ListOptions{Namespace: namespace, LabelSelector: labelSelector}
+
+		// Get secrets matching the label
+		secretList := &corev1.SecretList{}
+		err = clnt.List(context.Background(), secretList, targetListOptions)
+		if err != nil {
+			return []byte{}, err
+		}
+
+		// Loop through the list of secrets, find the matching key
+		for _, sV := range secretList.Items {
+			if sV.Data[keystorePasswordDef.Labels.Key] != nil {
+				passwordBytes = sV.Data[keystorePasswordDef.Labels.Key]
+			}
+		}
+
+	case "plaintext":
+		passwordBytes = []byte(keystorePasswordDef.Plaintext)
+	}
+
+	return passwordBytes, nil
 }

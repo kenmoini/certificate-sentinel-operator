@@ -62,11 +62,17 @@ type KeystoreTarget struct {
 
 // KeystorePassword provides the input for the Keystore Password
 type KeystorePassword struct {
-	// Type could be 'secret', 'labels', or 'list'
-	Type   string          `json:"type"`
-	List   []string        `json:"list,omitempty"`
-	Secret SecretReference `json:"secretRef,omitempty"`
-	Labels []LabelSelector `json:"labelRef,omitempty"`
+	// Type could be 'secret', 'labels', or 'plaintext'
+	Type      string          `json:"type"`
+	Plaintext string          `json:"plaintext,omitempty"`
+	Secret    SecretReference `json:"secretRef,omitempty"`
+	Labels    LabelReference  `json:"labelRef,omitempty"`
+}
+
+// LabelReference provides the internal Secret reference to unlock the Keystore
+type LabelReference struct {
+	LabelSelectors []LabelSelector `json:"labelSelectors"`
+	Key            string          `json:"key"`
 }
 
 // SecretReference provides the internal Secret reference to unlock the Keystore
@@ -79,9 +85,13 @@ type SecretReference struct {
 type KeystoreSentinelStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	DiscoveredKeystores []KeystoreInformation `json:"discoveredKeystores"`
+	DiscoveredKeystoreCertificates []KeystoreInformation `json:"discoveredKeystoreCertificates"`
+	// ExpiringCertificates is the number of certificates that are expiring
+	ExpiringCertificates int `json:"expiringCertificates,omitempty"`
+	// TotalKeystoresFound is the number of Keystores found in scope
+	TotalKeystoresFound int `json:"totalKeystoresFound,omitempty"`
 	// KeystoresAtRisk is the number of Keystores that have expiring certificates
-	KeystoresAtRisk int64 `json:"keystoresAtRisk,omitempty"`
+	KeystoresAtRisk int `json:"keystoresAtRisk,omitempty"`
 	// LastReportSent is the time the report has been sent out by this Operator controller and when
 	LastReportSent int64 `json:"lastReportSent,omitempty"`
 }
@@ -98,6 +108,16 @@ type KeystoreInformation struct {
 	APIVersion string `json:"apiVersion"`
 	// DataKey is the key for the data structure found
 	DataKey string `json:"dataKey"`
+	// KeystoreAlias is the key for the data structure found
+	KeystoreAlias string `json:"keystoreAlias"`
+	// Expiration is the expiration date in YYYY-MM-DD
+	Expiration string `json:"expiration"`
+	// Name provides the name of the certificate object
+	CommonName string `json:"commonName"`
+	// CertificateAuthorityCommonName provides the Common Name of the signing Certificate Authority
+	CertificateAuthorityCommonName string `json:"certificateAuthorityCommonName"`
+	// IsCertificateAuthority returns a bool if the certificate is a CA
+	IsCertificateAuthority bool `json:"isCertificateAuthority"`
 	// TriggeredDaysOut provides the slice of days out that triggered the watch
 	TriggeredDaysOut []int `json:"triggeredDaysOut,omitempty"`
 }

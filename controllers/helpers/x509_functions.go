@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+
 	"github.com/go-logr/logr"
 	configv1 "github.com/kenmoini/certificate-sentinel-operator/apis/config/v1"
 )
@@ -51,6 +52,32 @@ func ParseCertificateIntoObjects(cert *x509.Certificate, timeOut []configv1.Time
 	}
 	// Create CertificateInformation object
 	certInfo := configv1.CertificateInformation{Namespace: namespace, Name: name, DataKey: dataKey, Kind: kind, APIVersion: apiVersion, Expiration: expirationDate.String(), CommonName: cert.Subject.CommonName, CertificateAuthorityCommonName: cert.Issuer.CommonName, IsCertificateAuthority: cert.IsCA, TriggeredDaysOut: triggeredDaysOut}
+
+	// This certificate is not expired
+	discoveredL = append(discoveredL, certInfo)
+	// If this certificate triggered any alerted daysOut, it is at risk of expiring
+
+	return discoveredL, messagesL
+}
+
+// ParseKeystoreCertificateIntoObjects takes a slice of certificates and all the other supporting information to create a KeystoreInformation return to add to .status/alert report
+func ParseKeystoreCertificateIntoObjects(cert *x509.Certificate, timeOut []configv1.TimeSlice, namespace string, name string, dataKey string, kind string, apiVersion string, keystoreAlias string) (discovered []configv1.KeystoreInformation, messages []string) {
+	discoveredL := []configv1.KeystoreInformation{}
+	var messagesL []string
+
+	var triggeredDaysOut []int
+	expirationDate := cert.NotAfter
+
+	// Loop through the timeOut slice, add triggered values to the certInfo config for priority ranking
+	for _, d := range timeOut {
+		utcTime := d.Time.UTC()
+		if utcTime.After(expirationDate) {
+			messagesL = append(messagesL, "Certificate will expire in less than "+fmt.Sprint(d.DaysOut)+" days! Date: "+expirationDate.String())
+			triggeredDaysOut = append(triggeredDaysOut, d.DaysOut)
+		}
+	}
+	// Create KeystoreInformation object
+	certInfo := configv1.KeystoreInformation{Namespace: namespace, Name: name, DataKey: dataKey, Kind: kind, APIVersion: apiVersion, KeystoreAlias: keystoreAlias, Expiration: expirationDate.String(), CommonName: cert.Subject.CommonName, CertificateAuthorityCommonName: cert.Issuer.CommonName, IsCertificateAuthority: cert.IsCA, TriggeredDaysOut: triggeredDaysOut}
 
 	// This certificate is not expired
 	discoveredL = append(discoveredL, certInfo)

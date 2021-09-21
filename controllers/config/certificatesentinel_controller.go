@@ -18,15 +18,15 @@ package config
 
 import (
 	"context"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/rest"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/rest"
 
 	//"k8s.io/api"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -402,72 +402,4 @@ func (r *CertificateSentinelReconciler) SetupWithManager(mgr ctrl.Manager) error
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&configv1.CertificateSentinel{}).
 		Complete(r)
-}
-
-//===========================================================================================
-// SCOPED FUNCTIONS
-//===========================================================================================
-
-// DaysOutToTimeOut converts an int slice of the number of days out to trigger an expiration alert on into a []configv1.TimeSlice time.Time array of computed date values to compare against certificate expiration dates with time.After
-func DaysOutToTimeOut(targetDaysOut []int) []configv1.TimeSlice {
-	// Set Active DaysOut and time.Time formatted future dates
-	daysOut := targetDaysOut
-	if len(targetDaysOut) == 0 {
-		daysOut = defaults.DaysOut
-	}
-
-	timeNow := metav1.Now()
-	timeOut := []configv1.TimeSlice{}
-
-	for _, tR := range daysOut {
-		futureTime := time.Hour * 24 * time.Duration(tR)
-		tSlice := configv1.TimeSlice{Time: metav1.NewTime(timeNow.Add(futureTime)), DaysOut: tR}
-		timeOut = append(timeOut, tSlice)
-	}
-	return timeOut
-}
-
-// GetServiceAccount returns a single ServiceAccount by name in a given Namespace
-func GetServiceAccount(serviceAccount string, namespace string, clnt client.Client) (*corev1.ServiceAccount, error) {
-	targetServiceAccount := &corev1.ServiceAccount{}
-	err := clnt.Get(context.Background(), client.ObjectKey{
-		Namespace: namespace,
-		Name:      serviceAccount,
-	}, targetServiceAccount)
-
-	if err != nil {
-		lggr.Error(err, "Failed to get serviceaccount/"+serviceAccount+" in namespace/"+namespace)
-		return targetServiceAccount, err
-	}
-	return targetServiceAccount, nil
-}
-
-// GetSecret returns a single Secret by name in a given Namespace
-func GetSecret(name string, namespace string, clnt client.Client) (*corev1.Secret, error) {
-	targetSecret := &corev1.Secret{}
-	err := clnt.Get(context.Background(), client.ObjectKey{
-		Namespace: namespace,
-		Name:      name,
-	}, targetSecret)
-
-	if err != nil {
-		lggr.Error(err, "Failed to get secret/"+name+" in namespace/"+namespace)
-		return targetSecret, err
-	}
-	return targetSecret, nil
-}
-
-// GetConfigMap returns a single ConfigMap by name in a given Namespace
-func GetConfigMap(name string, namespace string, clnt client.Client) (*corev1.ConfigMap, error) {
-	targetConfigMap := &corev1.ConfigMap{}
-	err := clnt.Get(context.Background(), client.ObjectKey{
-		Namespace: namespace,
-		Name:      name,
-	}, targetConfigMap)
-
-	if err != nil {
-		lggr.Error(err, "Failed to get configmap/"+name+" in namespace/"+namespace)
-		return targetConfigMap, err
-	}
-	return targetConfigMap, nil
 }

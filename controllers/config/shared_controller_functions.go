@@ -21,16 +21,18 @@ import (
 	"crypto/sha1"
 	"crypto/x509"
 	"encoding/hex"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/go-logr/logr"
 	configv1 "github.com/kenmoini/certificate-sentinel-operator/apis/config/v1"
 	defaults "github.com/kenmoini/certificate-sentinel-operator/controllers/defaults"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strconv"
-	"strings"
-	"time"
 )
 
 // LogWithLevel implements simple log levels
@@ -38,6 +40,25 @@ func LogWithLevel(s string, level int, l logr.Logger) {
 	if SetLogLevel >= level {
 		l.Info(s)
 	}
+}
+
+// SetupSingleLabelSelector takes the YAML definition of a LabelSelector and creates the actual object to use in filtering lists
+func SetupSingleLabelSelector(targetLabels []configv1.LabelSelector) (labels.Selector, error) {
+	targetLabelSelectorFN := labels.NewSelector()
+	// Create the label selectors for the target label filter
+	if len(targetLabels) > 0 {
+		// Loop through label filters
+		for _, label := range targetLabels {
+			activeFilter := returnFilterType(label.Filter)
+			req, err := labels.NewRequirement(label.Key, activeFilter, label.Values)
+			if err != nil {
+				// Failed to build labelSelector requirement for target!
+				return labels.NewSelector(), err
+			}
+			targetLabelSelectorFN = targetLabelSelectorFN.Add(*req)
+		}
+	}
+	return targetLabelSelectorFN, nil
 }
 
 // SetupLabelSelectors wraps some shared functions
@@ -153,4 +174,68 @@ func zeroing(s []byte) {
 	for i := 0; i < len(s); i++ {
 		s[i] = 0
 	}
+}
+
+// DaysOutToTimeOut converts an int slice of the number of days out to trigger an expiration alert on into a []configv1.TimeSlice time.Time array of computed date values to compare against certificate expiration dates with time.After
+func DaysOutToTimeOut(targetDaysOut []int) []configv1.TimeSlice {
+	// Set Active DaysOut and time.Time formatted future dates
+	daysOut := targetDaysOut
+	if len(targetDaysOut) == 0 {
+		daysOut = defaults.DaysOut
+	}
+
+	timeNow := metav1.Now()
+	timeOut := []configv1.TimeSlice{}
+
+	for _, tR := range daysOut {
+		futureTime := time.Hour * 24 * time.Duration(tR)
+		tSlice := configv1.TimeSlice{Time: metav1.NewTime(timeNow.Add(futureTime)), DaysOut: tR}
+		timeOut = append(timeOut, tSlice)
+	}
+	return timeOut
+}
+
+// GetServiceAccount returns a single ServiceAccount by name in a given Namespace
+func GetServiceAccount(serviceAccount string, namespace string, clnt client.Client) (*corev1.ServiceAccount, error) {
+	targetServiceAccount := &corev1.ServiceAccount{}
+	err := clnt.Get(context.Background(), client.ObjectKey{
+		Namespace: namespace,
+		Name:      serviceAccount,
+	}, targetServiceAccount)
+
+	if err != nil {
+		lggr.Error(err, "Failed to get serviceaccount/"+serviceAccount+" in namespace/"+namespace)
+		return targetServiceAccount, err
+	}
+	return targetServiceAccount, nil
+}
+
+// GetSecret returns a single Secret by name in a given Namespace
+func GetSecret(name string, namespace string, clnt client.Client) (*corev1.Secret, error) {
+	targetSecret := &corev1.Secret{}
+	err := clnt.Get(context.Background(), client.ObjectKey{
+		Namespace: namespace,
+		Name:      name,
+	}, targetSecret)
+
+	if err != nil {
+		lggr.Error(err, "Failed to get secret/"+name+" in namespace/"+namespace)
+		return targetSecret, err
+	}
+	return targetSecret, nil
+}
+
+// GetConfigMap returns a single ConfigMap by name in a given Namespace
+func GetConfigMap(name string, namespace string, clnt client.Client) (*corev1.ConfigMap, error) {
+	targetConfigMap := &corev1.ConfigMap{}
+	err := clnt.Get(context.Background(), client.ObjectKey{
+		Namespace: namespace,
+		Name:      name,
+	}, targetConfigMap)
+
+	if err != nil {
+		lggr.Error(err, "Failed to get configmap/"+name+" in namespace/"+namespace)
+		return targetConfigMap, err
+	}
+	return targetConfigMap, nil
 }

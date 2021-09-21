@@ -18,16 +18,17 @@ package helpers
 
 import (
 	"crypto/tls"
-	defaults "github.com/kenmoini/certificate-sentinel-operator/controllers/defaults"
-	mail "github.com/xhit/go-simple-mail/v2"
 	"log"
 	"net"
 	"strconv"
 	"time"
+
+	defaults "github.com/kenmoini/certificate-sentinel-operator/controllers/defaults"
+	mail "github.com/xhit/go-simple-mail/v2"
 )
 
 // SendSMTPMail assembles everything needed to sent an email via go-simple-mail
-func SendSMTPMail(authType string, username string, password string, identity string, cramSecret string, useTLS *bool, useSTARTTLS *bool, to []string, from string, smtpServer string, textMessage string, htmlMessage string) {
+func SendSMTPMail(authType string, username string, password string, identity string, cramSecret string, useTLS *bool, useSTARTTLS *bool, to []string, from string, smtpServer string, subject string, textMessage string, htmlMessage string) {
 
 	// Create a new SMTP Client
 	server := mail.NewSMTPClient()
@@ -84,7 +85,7 @@ func SendSMTPMail(authType string, username string, password string, identity st
 
 	// Set up new email message
 	email := mail.NewMSG()
-	emailSubject := defaults.SMTPMessageSubject
+	emailSubject := defaults.SetDefaultString(defaults.SMTPMessageSubject, subject)
 
 	// Set message details
 	email.SetFrom(from).
