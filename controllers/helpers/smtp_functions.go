@@ -14,20 +14,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package config
+package helpers
 
 import (
 	"crypto/tls"
-	defaults "github.com/kenmoini/certificate-sentinel-operator/controllers/defaults"
-	mail "github.com/xhit/go-simple-mail/v2"
 	"log"
 	"net"
 	"strconv"
 	"time"
+
+	defaults "github.com/kenmoini/certificate-sentinel-operator/controllers/defaults"
+	mail "github.com/xhit/go-simple-mail/v2"
 )
 
-// sendSMTPMail assembles everything needed to sent an email via go-simple-mail
-func sendSMTPMail(authType string, username string, password string, identity string, cramSecret string, useTLS *bool, useSTARTTLS *bool, to []string, from string, smtpServer string, textMessage string, htmlMessage string) {
+// SendSMTPMail assembles everything needed to sent an email via go-simple-mail
+func SendSMTPMail(authType string, username string, password string, identity string, cramSecret string, useTLS *bool, useSTARTTLS *bool, to []string, from string, smtpServer string, subject string, textMessage string, htmlMessage string) {
 
 	// Create a new SMTP Client
 	server := mail.NewSMTPClient()
@@ -45,13 +46,16 @@ func sendSMTPMail(authType string, username string, password string, identity st
 		server.Authentication = mail.AuthCRAMMD5
 		server.Username = username
 		server.Password = cramSecret
+	case "login":
+		server.Authentication = mail.AuthLogin
+		server.Username = username
+		server.Password = password
 	case "plain":
 		server.Authentication = mail.AuthPlain
 		server.Username = username
 		server.Password = password
-	case "login":
 	default:
-		server.Authentication = mail.AuthLogin
+		server.Authentication = mail.AuthPlain
 		server.Username = username
 		server.Password = password
 	}
@@ -65,11 +69,11 @@ func sendSMTPMail(authType string, username string, password string, identity st
 	server.SendTimeout = 10 * time.Second
 
 	// Set STARTTLS config
-	if *useSTARTTLS == true {
+	if *useSTARTTLS {
 		server.Encryption = mail.EncryptionSTARTTLS
 	}
 	// Set TLSConfig to provide custom TLS configuration. For example, to skip TLS verification (useful for testing):
-	if *useTLS == false {
+	if *useTLS {
 		server.TLSConfig = &tls.Config{InsecureSkipVerify: false}
 	}
 
@@ -81,7 +85,7 @@ func sendSMTPMail(authType string, username string, password string, identity st
 
 	// Set up new email message
 	email := mail.NewMSG()
-	emailSubject := defaults.SMTPMessageSubject
+	emailSubject := defaults.SetDefaultString(defaults.SMTPMessageSubject, subject)
 
 	// Set message details
 	email.SetFrom(from).
